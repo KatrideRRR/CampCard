@@ -25,8 +25,21 @@ function hashToken(token) {
 
 
 async function createTopupQr(
-    walletId
+    walletId,
+    paymentMethod = "cash"
 ) {
+    if (
+        ![
+            "cash",
+            "sbp",
+        ].includes(
+            paymentMethod
+        )
+    ) {
+        throw new Error(
+            "INVALID_TOPUP_METHOD"
+        );
+    }
     return sequelize.transaction(
         async (transaction) => {
 
@@ -121,7 +134,7 @@ async function createTopupQr(
 
 
             const deepLink =
-                `https://t.me/${botUsername}?start=topup_${rawToken}`;
+                `https://t.me/${botUsername}?start=topup_${paymentMethod}_${rawToken}`;
 
 
             const qrBuffer =
