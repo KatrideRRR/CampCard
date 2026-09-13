@@ -121,10 +121,6 @@ const customerKeyboard = Markup.keyboard([
         "📱 Показать QR",
     ],
     [
-        "💰 Пополнить",
-        "📜 История",
-    ],
-    [
         "🎁 Пакеты",
         "ℹ️ Помощь",
     ],
@@ -132,6 +128,29 @@ const customerKeyboard = Markup.keyboard([
 ])
     .resize()
     .persistent();
+
+function buildCardActionsKeyboard() {
+    return Markup.inlineKeyboard([
+        [
+            Markup.button.callback(
+                "📱 Показать QR",
+                "card_show_qr"
+            ),
+        ],
+        [
+            Markup.button.callback(
+                "💰 Пополнить",
+                "card_topup"
+            ),
+        ],
+        [
+            Markup.button.callback(
+                "📜 История",
+                "card_history"
+            ),
+        ],
+    ]);
+}
 
 bot.start(async (ctx) => {
     try {
@@ -398,32 +417,17 @@ bot.hears(
                     ctx.from
                 );
 
-
             const overview =
                 await getCardOverview(
                     user.id
                 );
-
 
             await ctx.reply(
                 buildCardOverviewText(
                     overview
                 ),
 
-                Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback(
-                            "💵 Наличными в кафе",
-                            "topup_cash_qr"
-                        ),
-                    ],
-                    [
-                        Markup.button.callback(
-                            "⚡ СБП",
-                            "topup_sbp_qr"
-                        ),
-                    ],
-                ])
+                buildCardActionsKeyboard()
             );
 
         } catch (error) {
@@ -520,24 +524,85 @@ bot.action(
 bot.action(
     "card_topup",
     async (ctx) => {
-        await ctx.answerCbQuery();
+        try {
+            await ctx.answerCbQuery();
 
-        await ctx.reply(
-            [
-                "💰 Пополнение Camp Card",
-                "",
-                "Выберите способ пополнения:",
-            ].join("\n"),
-
-            Markup.inlineKeyboard([
+            await ctx.editMessageText(
                 [
-                    Markup.button.callback(
-                        "💵 Наличными в кафе",
-                        "topup_cash_qr"
-                    ),
-                ],
-            ])
-        );
+                    "💰 Пополнение Camp Card",
+                    "",
+                    "Выберите способ пополнения:",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "💵 Наличными в кафе",
+                            "topup_cash_qr"
+                        ),
+                    ],
+                    [
+                        Markup.button.callback(
+                            "⚡ СБП",
+                            "topup_sbp_qr"
+                        ),
+                    ],
+                    [
+                        Markup.button.callback(
+                            "⬅️ Назад к Camp Card",
+                            "card_back"
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Card topup menu:",
+                error
+            );
+        }
+    }
+);
+
+bot.action(
+    "card_back",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+            const overview =
+                await getCardOverview(
+                    user.id
+                );
+
+            await ctx.answerCbQuery();
+
+            await ctx.editMessageText(
+                buildCardOverviewText(
+                    overview
+                ),
+
+                buildCardActionsKeyboard()
+            );
+
+        } catch (error) {
+            console.error(
+                "Card back:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось открыть Camp Card"
+                )
+                .catch(() => {});
+        }
     }
 );
 
@@ -777,28 +842,6 @@ bot.command(
                 "Ошибка назначения точки."
             );
         }
-    }
-);
-
-bot.hears(
-    "💰 Пополнить",
-    async (ctx) => {
-        await ctx.reply(
-            [
-                "💰 Пополнение Camp Card",
-                "",
-                "Выберите способ пополнения:",
-            ].join("\n"),
-
-            Markup.inlineKeyboard([
-                [
-                    Markup.button.callback(
-                        "💵 Наличными в кафе",
-                        "topup_cash_qr"
-                    ),
-                ],
-            ])
-        );
     }
 );
 
@@ -1415,67 +1458,6 @@ bot.command(
 
             await ctx.reply(
                 "Ошибка тестового пополнения."
-            );
-        }
-    }
-);
-
-bot.hears(
-    "📜 История",
-    async (ctx) => {
-        try {
-            const {
-                wallet,
-            } =
-                await getOrCreateTelegramUser(
-                    ctx.from
-                );
-
-            const history =
-                await getWalletHistory({
-                    walletId:
-                    wallet.id,
-
-                    limit:
-                        8,
-                });
-
-
-            const buttons = [];
-
-            if (
-                history.hasMore &&
-                history.nextBeforeId
-            ) {
-                buttons.push([
-                    Markup.button.callback(
-                        "⬅️ Более ранние",
-                        `history_older:${history.nextBeforeId}`
-                    ),
-                ]);
-            }
-
-
-            await ctx.reply(
-                buildHistoryText(
-                    history.items
-                ),
-
-                buttons.length
-                    ? Markup.inlineKeyboard(
-                        buttons
-                    )
-                    : undefined
-            );
-
-        } catch (error) {
-            console.error(
-                "History error:",
-                error
-            );
-
-            await ctx.reply(
-                "❌ Не удалось загрузить историю."
             );
         }
     }
