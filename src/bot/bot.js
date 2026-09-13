@@ -39,6 +39,12 @@ const {
 );
 
 const {
+    createSberTopup,
+} = require(
+    "../services/sberTopupService"
+);
+
+const {
     getCardOverview,
     buildCardOverviewText,
 } = require(
@@ -516,6 +522,153 @@ bot.action(
 );
 
 bot.action(
+    "sber_topup",
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+
+            const plans =
+                await getActivePlans();
+
+
+            const buttons =
+                plans.map(
+                    (plan) => {
+
+                        const paid =
+                            Number(
+                                plan
+                                    .topup_amount_kopecks
+                            );
+
+                        const bonus =
+                            Number(
+                                plan
+                                    .bonus_amount_kopecks
+                            );
+
+
+                        return [
+                            Markup.button.callback(
+                                `${formatKopecks(paid)} ₽ → ${formatKopecks(paid + bonus)} ₽`,
+                                `sber_plan:${plan.code}`
+                            ),
+                        ];
+                    }
+                );
+
+
+            buttons.push([
+                Markup.button.callback(
+                    "⬅️ Назад",
+                    "card_topup"
+                ),
+            ]);
+
+
+            await ctx.editMessageText(
+                [
+                    "🏦 Онлайн-пополнение через Сбер",
+                    "",
+                    "Выберите пакет:",
+                    "",
+                    "После оплаты баланс Camp Card пополнится автоматически.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Sber menu:",
+                error
+            );
+        }
+    }
+);
+
+bot.action(
+    /^sber_plan:(.+)$/,
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery(
+                "Создаём оплату..."
+            );
+
+
+            const planCode =
+                ctx.match[1];
+
+
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const result =
+                await createSberTopup({
+                    walletId:
+                    wallet.id,
+
+                    planCode,
+                });
+
+
+            const paid =
+                Number(
+                    result.plan
+                        .topup_amount_kopecks
+                );
+
+            const bonus =
+                Number(
+                    result.plan
+                        .bonus_amount_kopecks
+                );
+
+
+            await ctx.reply(
+                [
+                    "🏦 Пополнение через Сбер",
+                    "",
+                    `К оплате: ${formatKopecks(paid)} ₽`,
+                    `Бонус: +${formatKopecks(bonus)} ₽`,
+                    `На Camp Card поступит: ${formatKopecks(paid + bonus)} ₽`,
+                    "",
+                    "Нажмите кнопку ниже и завершите оплату на странице Сбера.",
+                    "",
+                    "После подтверждения банком баланс пополнится автоматически.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.url(
+                            `Оплатить ${formatKopecks(paid)} ₽`,
+                            result.paymentUrl
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Create Sber topup:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось создать оплату через Сбер."
+            );
+        }
+    }
+);
+
+bot.action(
     "card_topup",
     async (ctx) => {
         try {
@@ -537,8 +690,8 @@ bot.action(
                     ],
                     [
                         Markup.button.callback(
-                            "⚡ СБП",
-                            "topup_sbp_qr"
+                            "🏦 Онлайн через Сбер",
+                            "sber_topup"
                         ),
                     ],
                     [

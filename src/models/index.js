@@ -11,6 +11,7 @@ const Redemption = require("./Redemption");
 const TopupQrToken = require("./TopupQrToken");
 const TopupPayment = require("./TopupPayment");
 const BonusExpiryNotification = require("./BonusExpiryNotification");
+const SberTopupPayment = require("./SberTopupPayment");
 
 User.hasOne(Wallet, {
     foreignKey: "user_id",
@@ -292,6 +293,51 @@ BonusExpiryNotification.belongsTo(
     }
 );
 
+Wallet.hasMany(
+    SberTopupPayment,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "sberTopups",
+    }
+);
+
+SberTopupPayment.belongsTo(
+    Wallet,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "wallet",
+    }
+);
+
+
+Plan.hasMany(
+    SberTopupPayment,
+    {
+        foreignKey:
+            "plan_id",
+
+        as:
+            "sberTopups",
+    }
+);
+
+SberTopupPayment.belongsTo(
+    Plan,
+    {
+        foreignKey:
+            "plan_id",
+
+        as:
+            "plan",
+    }
+);
+
 module.exports = {
     User,
     Wallet,
@@ -306,4 +352,5 @@ module.exports = {
     TopupQrToken,
     TopupPayment,
     BonusExpiryNotification,
+    SberTopupPayment,
 };

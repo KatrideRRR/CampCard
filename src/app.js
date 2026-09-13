@@ -27,6 +27,12 @@ const {
 } = require("./services/locationService");
 
 const {
+    finalizeSberTopup,
+} = require(
+    "./services/sberTopupService"
+);
+
+const {
     startBonusExpiryNotificationWorker,
 } = require(
     "./services/bonusNotificationService"
@@ -109,6 +115,151 @@ app.get(
     }
 );
 
+app.post(
+    "/campcard-sber/callback",
+    async (req, res) => {
+        try {
+            const {
+                mdOrder,
+                orderNumber,
+                operation,
+                status,
+            } =
+            req.body || {};
+
+
+            console.log(
+                "[Sber callback]",
+                {
+                    mdOrder,
+                    orderNumber,
+                    operation,
+                    status,
+                }
+            );
+
+
+            /*
+             * Нас интересует только
+             * успешное завершение оплаты.
+             */
+            if (
+                operation !==
+                "deposited" ||
+                Number(status) !== 1
+            ) {
+                return res
+                    .sendStatus(200);
+            }
+
+
+            const result =
+                await finalizeSberTopup({
+                    sberOrderId:
+                    mdOrder,
+
+                    orderNumber,
+                });
+
+
+            if (
+                result.completed &&
+                result.customer
+            ) {
+                try {
+
+                    await bot.telegram
+                        .sendMessage(
+                            String(
+                                result
+                                    .customer
+                                    .telegram_id
+                            ),
+
+                            [
+                                "✅ Оплата через Сбер получена",
+                                "",
+                                `Пополнение: ${Number(result.payment.paid_amount_kopecks) / 100} ₽`,
+                                `Бонус: +${Number(result.payment.bonus_amount_kopecks) / 100} ₽`,
+                                "",
+                                "Camp Card пополнена автоматически.",
+                            ].join("\n")
+                        );
+
+                } catch (
+                    notifyError
+                    ) {
+                    console.error(
+                        "Sber notify:",
+                        notifyError
+                    );
+                }
+            }
+
+
+            return res
+                .sendStatus(200);
+
+        } catch (error) {
+
+            console.error(
+                "Sber callback error:",
+                error
+            );
+
+
+            /*
+             * Сбер повторяет callback,
+             * если мы не ответили 200.
+             */
+            return res
+                .sendStatus(500);
+        }
+    }
+);
+
+app.get(
+    "/campcard-sber/return",
+    (req, res) => {
+
+        const username =
+            String(
+                process.env
+                    .TELEGRAM_BOT_USERNAME ||
+                ""
+            ).replace(
+                "@",
+                ""
+            );
+
+
+        return res.redirect(
+            `https://t.me/${username}`
+        );
+    }
+);
+
+
+app.get(
+    "/campcard-sber/fail",
+    (req, res) => {
+
+        const username =
+            String(
+                process.env
+                    .TELEGRAM_BOT_USERNAME ||
+                ""
+            ).replace(
+                "@",
+                ""
+            );
+
+
+        return res.redirect(
+            `https://t.me/${username}`
+        );
+    }
+);
 
 async function start() {
     try {
