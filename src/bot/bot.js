@@ -17,6 +17,21 @@ const {
 } = require("../services/walletService");
 
 const {
+    createTopupQr,
+    claimTopupQr,
+} = require(
+    "../services/topupQrService"
+);
+
+const {
+    prepareCashTopup,
+    completeCashTopup,
+    cancelCashTopup,
+} = require(
+    "../services/cashTopupService"
+);
+
+const {
     parseRublesToKopecks,
     claimPaymentQr,
     getActivePendingCharge,
@@ -117,6 +132,140 @@ bot.start(async (ctx) => {
         const payload =
             ctx.startPayload ||
             "";
+
+        /*
+ * Сотрудник сканирует
+ * QR для пополнения.
+ */
+        if (
+            payload.startsWith(
+                "topup_"
+            )
+        ) {
+            const rawToken =
+                payload.substring(
+                    6
+                );
+
+            try {
+                const result =
+                    await claimTopupQr({
+                        rawToken,
+
+                        employeeUserId:
+                        user.id,
+                    });
+
+
+                const plans =
+                    await getActivePlans();
+
+
+                if (!plans.length) {
+                    await ctx.reply(
+                        "❌ Нет доступных пакетов."
+                    );
+
+                    return;
+                }
+
+
+                const buttons =
+                    plans.map(
+                        (plan) => {
+
+                            const paid =
+                                Number(
+                                    plan
+                                        .topup_amount_kopecks
+                                );
+
+                            const bonus =
+                                Number(
+                                    plan
+                                        .bonus_amount_kopecks
+                                );
+
+                            return [
+                                Markup.button.callback(
+                                    `${plan.name}: ${formatKopecks(paid)} ₽ → ${formatKopecks(paid + bonus)} ₽`,
+
+                                    `cash_topup_plan:${result.qrToken.id}:${plan.code}`
+                                ),
+                            ];
+                        }
+                    );
+
+
+                const currentBalance =
+                    Number(
+                        result.wallet
+                            .paid_balance_kopecks ||
+                        0
+                    ) +
+                    Number(
+                        result.wallet
+                            .bonus_balance_kopecks ||
+                        0
+                    );
+
+
+                await ctx.reply(
+                    [
+                        "💵 Пополнение Camp Card",
+                        "",
+                        `📍 ${result.location.name}`,
+                        "",
+                        `Клиент: ${result.customer.first_name || "Клиент"}`,
+                        `Текущий баланс: ${formatKopecks(currentBalance)} ₽`,
+                        "",
+                        "Выберите пакет, который клиент оплачивает наличными:",
+                    ].join("\n"),
+
+                    Markup.inlineKeyboard(
+                        buttons
+                    )
+                );
+
+
+                return;
+
+            } catch (error) {
+                console.error(
+                    "Claim topup QR:",
+                    error
+                );
+
+
+                const messages = {
+                    NOT_EMPLOYEE:
+                        "❌ Этот аккаунт не является сотрудником.",
+
+                    EMPLOYEE_LOCATION_NOT_SET:
+                        "❌ Для сотрудника не назначена точка.",
+
+                    QR_NOT_FOUND:
+                        "❌ QR для пополнения недействителен.",
+
+                    QR_ALREADY_USED:
+                        "❌ Этот QR уже использован.",
+
+                    QR_EXPIRED:
+                        "⌛ QR для пополнения истёк.",
+                };
+
+
+                await ctx.reply(
+                    messages[
+                        error.message
+                        ] ||
+                    "❌ Не удалось открыть пополнение."
+                );
+
+
+                return;
+            }
+        }
 
         /*
          * Сотрудник отсканировал
@@ -461,8 +610,345 @@ bot.hears(
     "💰 Пополнить",
     async (ctx) => {
         await ctx.reply(
-            "💰 Здесь скоро появятся варианты пополнения Camp Card."
+            [
+                "💰 Пополнение Camp Card",
+                "",
+                "Выберите способ пополнения:",
+            ].join("\n"),
+
+            Markup.inlineKeyboard([
+                [
+                    Markup.button.callback(
+                        "💵 Наличными в кафе",
+                        "topup_cash_qr"
+                    ),
+                ],
+            ])
         );
+    }
+);
+
+bot.action(
+    "topup_cash_qr",
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const {
+                qrBuffer,
+            } =
+                await createTopupQr(
+                    wallet.id
+                );
+
+
+            await ctx.replyWithPhoto(
+                {
+                    source:
+                    qrBuffer,
+                },
+                {
+                    caption: [
+                        "💵 Пополнение Camp Card наличными",
+                        "",
+                        "Покажите этот QR сотруднику кафе.",
+                        "",
+                        "Сотрудник отсканирует QR, выберет пакет и подтвердит получение наличных.",
+                        "",
+                        "QR одноразовый и действует ограниченное время.",
+                    ].join("\n"),
+                }
+            );
+
+        } catch (error) {
+            console.error(
+                "Create topup QR:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось создать QR для пополнения."
+            );
+        }
+    }
+);
+
+bot.action(
+    /^cash_topup_plan:(\d+):(.+)$/,
+    async (ctx) => {
+        try {
+            const qrTokenId =
+                ctx.match[1];
+
+            const planCode =
+                ctx.match[2];
+
+
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const result =
+                await prepareCashTopup({
+                    qrTokenId,
+
+                    employeeUserId:
+                    user.id,
+
+                    planCode,
+                });
+
+
+            await ctx.answerCbQuery();
+
+
+            const paid =
+                Number(
+                    result.plan
+                        .topup_amount_kopecks
+                );
+
+            const bonus =
+                Number(
+                    result.plan
+                        .bonus_amount_kopecks
+                );
+
+
+            await ctx.reply(
+                [
+                    "💵 Подтверждение пополнения",
+                    "",
+                    `📍 ${result.location.name}`,
+                    `Клиент: ${result.customer.first_name || "Клиент"}`,
+                    "",
+                    `Получить наличными: ${formatKopecks(paid)} ₽`,
+                    `Бонус: +${formatKopecks(bonus)} ₽`,
+                    `На Camp Card: ${formatKopecks(paid + bonus)} ₽`,
+                    "",
+                    "Подтвердите только после получения денег от клиента.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "✅ Деньги получены",
+                            `cash_topup_confirm:${result.topup.id}`
+                        ),
+                    ],
+
+                    [
+                        Markup.button.callback(
+                            "❌ Отмена",
+                            `cash_topup_cancel:${result.topup.id}`
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Prepare cash topup:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось подготовить пополнение"
+                )
+                .catch(() => {});
+
+            await ctx.reply(
+                "❌ Не удалось подготовить пополнение."
+            );
+        }
+    }
+);
+
+bot.action(
+    /^cash_topup_confirm:(\d+)$/,
+    async (ctx) => {
+        try {
+            const topupPaymentId =
+                ctx.match[1];
+
+
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const result =
+                await completeCashTopup({
+                    topupPaymentId,
+
+                    employeeUserId:
+                    user.id,
+                });
+
+
+            await ctx.answerCbQuery(
+                "Пополнение выполнено"
+            );
+
+
+            const paid =
+                Number(
+                    result.topup
+                        .paid_amount_kopecks
+                );
+
+            const bonus =
+                Number(
+                    result.topup
+                        .bonus_amount_kopecks
+                );
+
+            const total =
+                Number(
+                    result.topup
+                        .total_credited_kopecks
+                );
+
+
+            await ctx.reply(
+                [
+                    "✅ Camp Card пополнена",
+                    "",
+                    `Клиент: ${result.customer.first_name || "Клиент"}`,
+                    `📍 ${result.location.name}`,
+                    "",
+                    `Получено наличными: ${formatKopecks(paid)} ₽`,
+                    `Бонус: +${formatKopecks(bonus)} ₽`,
+                    `Зачислено: ${formatKopecks(total)} ₽`,
+                ].join("\n")
+            );
+
+
+            /*
+             * Уведомление клиенту.
+             * Если Telegram не доставит
+             * сообщение — само пополнение
+             * уже всё равно успешно.
+             */
+            try {
+                await ctx.telegram.sendMessage(
+                    String(
+                        result.customer
+                            .telegram_id
+                    ),
+
+                    [
+                        "✅ Ваша Camp Card пополнена",
+                        "",
+                        `Пополнение: ${formatKopecks(paid)} ₽`,
+                        `Бонус: +${formatKopecks(bonus)} ₽`,
+                        "",
+                        buildWalletText(
+                            result.wallet
+                        ),
+                    ].join("\n")
+                );
+            } catch (notifyError) {
+                console.error(
+                    "Customer topup notification:",
+                    notifyError
+                );
+            }
+
+        } catch (error) {
+            console.error(
+                "Complete cash topup:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Ошибка пополнения"
+                )
+                .catch(() => {});
+
+            const messages = {
+                TOPUP_ALREADY_COMPLETED:
+                    "✅ Это пополнение уже было выполнено.",
+
+                TOPUP_CANCELLED:
+                    "❌ Это пополнение отменено.",
+
+                TOPUP_OTHER_EMPLOYEE:
+                    "❌ Это пополнение открыто другим сотрудником.",
+            };
+
+            await ctx.reply(
+                messages[
+                    error.message
+                    ] ||
+                "❌ Не удалось выполнить пополнение."
+            );
+        }
+    }
+);
+
+bot.action(
+    /^cash_topup_cancel:(\d+)$/,
+    async (ctx) => {
+        try {
+            const topupPaymentId =
+                ctx.match[1];
+
+
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            await cancelCashTopup({
+                topupPaymentId,
+
+                employeeUserId:
+                user.id,
+            });
+
+
+            await ctx.answerCbQuery(
+                "Пополнение отменено"
+            );
+
+
+            await ctx.reply(
+                "❌ Пополнение Camp Card отменено."
+            );
+
+        } catch (error) {
+            console.error(
+                "Cancel cash topup:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось отменить"
+                )
+                .catch(() => {});
+        }
     }
 );
 
