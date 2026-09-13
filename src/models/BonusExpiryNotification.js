@@ -90,6 +90,8 @@ const BonusExpiryNotification =
 
             indexes: [
                 {
+                    name: "uniq_bonus_expiry_notice",
+
                     unique: true,
 
                     fields: [
