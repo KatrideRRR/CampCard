@@ -39,6 +39,13 @@ const {
 );
 
 const {
+    getCardOverview,
+    buildCardOverviewText,
+} = require(
+    "../services/cardOverviewService"
+);
+
+const {
     parseRublesToKopecks,
     claimPaymentQr,
     getActivePendingCharge,
@@ -413,23 +420,217 @@ bot.hears(
     async (ctx) => {
         try {
             const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const overview =
+                await getCardOverview(
+                    user.id
+                );
+
+
+            await ctx.reply(
+                buildCardOverviewText(
+                    overview
+                ),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "📱 Показать QR",
+                            "card_show_qr"
+                        ),
+
+                        Markup.button.callback(
+                            "💰 Пополнить",
+                            "card_topup"
+                        ),
+                    ],
+
+                    [
+                        Markup.button.callback(
+                            "📜 История",
+                            "card_history"
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Card overview:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось загрузить Camp Card."
+            );
+        }
+    }
+);
+
+bot.action(
+    "card_show_qr",
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+
+
+            const {
                 wallet,
             } =
                 await getOrCreateTelegramUser(
                     ctx.from
                 );
 
-            await ctx.reply(
-                buildWalletText(wallet)
+
+            const totalBalance =
+                Number(
+                    wallet
+                        .paid_balance_kopecks ||
+                    0
+                ) +
+                Number(
+                    wallet
+                        .bonus_balance_kopecks ||
+                    0
+                );
+
+
+            if (
+                totalBalance <= 0
+            ) {
+                await ctx.reply(
+                    "На Camp Card недостаточно средств."
+                );
+
+                return;
+            }
+
+
+            const {
+                qrBuffer,
+            } =
+                await createPaymentQr(
+                    wallet.id
+                );
+
+
+            await ctx.replyWithPhoto(
+                {
+                    source:
+                    qrBuffer,
+                },
+                {
+                    caption: [
+                        "📱 Camp Card",
+                        "",
+                        "Покажите этот QR сотруднику.",
+                        "",
+                        "QR одноразовый и действует ограниченное время.",
+                        "",
+                        `Баланс: ${formatKopecks(totalBalance)} ₽`,
+                    ].join("\n"),
+                }
             );
+
         } catch (error) {
             console.error(
-                "Ошибка показа Camp Card:",
+                "Card QR:",
                 error
             );
 
             await ctx.reply(
-                "Не удалось загрузить баланс."
+                "❌ Не удалось создать QR."
+            );
+        }
+    }
+);
+
+bot.action(
+    "card_topup",
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        await ctx.reply(
+            [
+                "💰 Пополнение Camp Card",
+                "",
+                "Выберите способ пополнения:",
+            ].join("\n"),
+
+            Markup.inlineKeyboard([
+                [
+                    Markup.button.callback(
+                        "💵 Наличными в кафе",
+                        "topup_cash_qr"
+                    ),
+                ],
+            ])
+        );
+    }
+);
+
+bot.action(
+    "card_history",
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+
+
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const history =
+                await getWalletHistory({
+                    walletId:
+                    wallet.id,
+
+                    limit:
+                        8,
+                });
+
+
+            const buttons = [];
+
+            if (
+                history.hasMore &&
+                history.nextBeforeId
+            ) {
+                buttons.push([
+                    Markup.button.callback(
+                        "⬅️ Более ранние",
+                        `history_older:${history.nextBeforeId}`
+                    ),
+                ]);
+            }
+
+
+            await ctx.reply(
+                buildHistoryText(
+                    history.items
+                ),
+
+                buttons.length
+                    ? Markup.inlineKeyboard(
+                        buttons
+                    )
+                    : undefined
+            );
+
+        } catch (error) {
+            console.error(
+                "Card history:",
+                error
             );
         }
     }
@@ -1194,7 +1395,6 @@ bot.hears(
                     ctx.from
                 );
 
-
             const history =
                 await getWalletHistory({
                     walletId:
@@ -1205,18 +1405,16 @@ bot.hears(
                 });
 
 
-            const keyboard =
-                [];
-
+            const buttons = [];
 
             if (
                 history.hasMore &&
                 history.nextBeforeId
             ) {
-                keyboard.push([
+                buttons.push([
                     Markup.button.callback(
-                        "Показать ещё",
-                        `history_more:${history.nextBeforeId}`
+                        "⬅️ Более ранние",
+                        `history_older:${history.nextBeforeId}`
                     ),
                 ]);
             }
@@ -1227,9 +1425,9 @@ bot.hears(
                     history.items
                 ),
 
-                keyboard.length
+                buttons.length
                     ? Markup.inlineKeyboard(
-                        keyboard
+                        buttons
                     )
                     : undefined
             );
@@ -1248,7 +1446,7 @@ bot.hears(
 );
 
 bot.action(
-    /^history_more:(\d+)$/,
+    /^history_older:(\d+)$/,
     async (ctx) => {
         try {
             const beforeId =
@@ -1277,41 +1475,44 @@ bot.action(
                 });
 
 
-            await ctx.answerCbQuery();
-
-
-            const keyboard =
-                [];
-
+            const buttons = [];
 
             if (
                 history.hasMore &&
                 history.nextBeforeId
             ) {
-                keyboard.push([
+                buttons.push([
                     Markup.button.callback(
-                        "Показать ещё",
-                        `history_more:${history.nextBeforeId}`
+                        "⬅️ Ещё раньше",
+                        `history_older:${history.nextBeforeId}`
                     ),
                 ]);
             }
 
+            buttons.push([
+                Markup.button.callback(
+                    "🕘 К последним операциям",
+                    "history_latest"
+                ),
+            ]);
 
-            await ctx.reply(
+
+            await ctx.answerCbQuery();
+
+
+            await ctx.editMessageText(
                 buildHistoryText(
                     history.items
                 ),
 
-                keyboard.length
-                    ? Markup.inlineKeyboard(
-                        keyboard
-                    )
-                    : undefined
+                Markup.inlineKeyboard(
+                    buttons
+                )
             );
 
         } catch (error) {
             console.error(
-                "History more error:",
+                "History older:",
                 error
             );
 
@@ -1322,6 +1523,67 @@ bot.action(
                 .catch(
                     () => {}
                 );
+        }
+    }
+);
+
+bot.action(
+    "history_latest",
+    async (ctx) => {
+        try {
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const history =
+                await getWalletHistory({
+                    walletId:
+                    wallet.id,
+
+                    limit:
+                        8,
+                });
+
+
+            const buttons = [];
+
+            if (
+                history.hasMore &&
+                history.nextBeforeId
+            ) {
+                buttons.push([
+                    Markup.button.callback(
+                        "⬅️ Более ранние",
+                        `history_older:${history.nextBeforeId}`
+                    ),
+                ]);
+            }
+
+
+            await ctx.answerCbQuery();
+
+
+            await ctx.editMessageText(
+                buildHistoryText(
+                    history.items
+                ),
+
+                buttons.length
+                    ? Markup.inlineKeyboard(
+                        buttons
+                    )
+                    : undefined
+            );
+
+        } catch (error) {
+            console.error(
+                "History latest:",
+                error
+            );
         }
     }
 );

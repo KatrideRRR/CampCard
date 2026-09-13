@@ -126,13 +126,17 @@ async function getWalletHistory({
         limit;
 
 
-    const transactions =
+    const selectedRows =
         hasMore
             ? rows.slice(
                 0,
                 limit
             )
             : rows;
+
+    const transactions =
+        [...selectedRows]
+            .reverse();
 
 
     /*
@@ -399,9 +403,7 @@ async function getWalletHistory({
 
         nextBeforeId:
             items.length
-                ? items[
-                items.length - 1
-                    ].id
+                ? items[0].id
                 : null,
     };
 }
