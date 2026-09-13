@@ -18,12 +18,6 @@ const {
     "./integrations/businessCash/businessCashService"
 );
 
-const app = express();
-
-const PORT = Number(
-    process.env.PORT || 5002
-);
-
 const {
     seedDefaultPlans,
 } = require("./services/planService");
@@ -32,27 +26,84 @@ const {
     seedLocations,
 } = require("./services/locationService");
 
+
+const app = express();
+
+const PORT = Number(
+    process.env.PORT || 5002
+);
+
+const WEBHOOK_PATH =
+    process.env.TELEGRAM_WEBHOOK_PATH ||
+    "/campcard-webhook";
+
+const WEBHOOK_DOMAIN =
+    process.env.TELEGRAM_WEBHOOK_DOMAIN ||
+    "notify.cargocamp.ru";
+
+const WEBHOOK_SECRET =
+    process.env.TELEGRAM_WEBHOOK_SECRET ||
+    "campcardwebhook";
+
+
 app.use(
     express.json()
 );
+
+
+/*
+ * Telegram webhook.
+ */
+app.post(
+    WEBHOOK_PATH,
+    async (req, res) => {
+        try {
+            const receivedSecret =
+                req.get(
+                    "x-telegram-bot-api-secret-token"
+                );
+
+            if (
+                WEBHOOK_SECRET &&
+                receivedSecret !==
+                WEBHOOK_SECRET
+            ) {
+                return res
+                    .status(401)
+                    .send("Unauthorized");
+            }
+
+            await bot.handleUpdate(
+                req.body
+            );
+
+            return res.sendStatus(200);
+
+        } catch (error) {
+            console.error(
+                "❌ Ошибка Telegram webhook:",
+                error
+            );
+
+            return res.sendStatus(500);
+        }
+    }
+);
+
 
 app.get(
     "/health",
     (req, res) => {
         res.json({
             ok: true,
-
-            service:
-                "camp-card",
-
-            telegram:
-                "running",
-
+            service: "camp-card",
+            telegram: "webhook",
             timestamp:
                 new Date().toISOString(),
         });
     }
 );
+
 
 async function start() {
     try {
@@ -67,7 +118,6 @@ async function start() {
         });
 
         await seedDefaultPlans();
-
         await seedLocations();
 
         console.log(
@@ -84,19 +134,46 @@ async function start() {
 
         startBusinessCashRetryWorker();
 
-        await bot.launch();
+        /*
+         * Сначала поднимаем локальный HTTP.
+         */
+        await new Promise(
+            (resolve) => {
+                app.listen(
+                    PORT,
+                    "127.0.0.1",
+                    () => {
+                        console.log(
+                            `✅ Camp Card API: 127.0.0.1:${PORT}`
+                        );
 
-        console.log(
-            "✅ Telegram Camp Card запущен"
-        );
-
-        app.listen(
-            PORT,
-            () => {
-                console.log(
-                    `✅ Camp Card API запущен на порту ${PORT}`
+                        resolve();
+                    }
                 );
             }
+        );
+
+        /*
+         * Затем регистрируем webhook
+         * через наш Telegram API gateway.
+         */
+        const webhookUrl =
+            `https://${WEBHOOK_DOMAIN}${WEBHOOK_PATH}`;
+
+        await bot.telegram.setWebhook(
+            webhookUrl,
+            {
+                secret_token:
+                WEBHOOK_SECRET,
+            }
+        );
+
+        console.log(
+            "✅ Telegram Camp Card запущен в WEBHOOK режиме"
+        );
+
+        console.log(
+            `🌐 Webhook: ${webhookUrl}`
         );
 
     } catch (error) {
@@ -109,15 +186,14 @@ async function start() {
     }
 }
 
+
 start();
+
 
 process.once(
     "SIGINT",
     async () => {
-        bot.stop("SIGINT");
-
         await sequelize.close();
-
         process.exit(0);
     }
 );
@@ -125,10 +201,7 @@ process.once(
 process.once(
     "SIGTERM",
     async () => {
-        bot.stop("SIGTERM");
-
         await sequelize.close();
-
         process.exit(0);
     }
 );
