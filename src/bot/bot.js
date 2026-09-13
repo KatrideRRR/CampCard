@@ -133,12 +133,6 @@ function buildCardActionsKeyboard() {
     return Markup.inlineKeyboard([
         [
             Markup.button.callback(
-                "📱 Показать QR",
-                "card_show_qr"
-            ),
-        ],
-        [
-            Markup.button.callback(
                 "💰 Пополнить",
                 "card_topup"
             ),
