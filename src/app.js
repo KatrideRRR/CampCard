@@ -26,6 +26,11 @@ const {
     seedLocations,
 } = require("./services/locationService");
 
+const {
+    startBonusExpiryNotificationWorker,
+} = require(
+    "./services/bonusNotificationService"
+);
 
 const app = express();
 
@@ -166,6 +171,10 @@ async function start() {
                 secret_token:
                 WEBHOOK_SECRET,
             }
+        );
+
+        startBonusExpiryNotificationWorker(
+            bot
         );
 
         console.log(
