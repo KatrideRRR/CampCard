@@ -8,6 +8,8 @@ const EmployeeLocation = require("./EmployeeLocation");
 const QrToken = require("./QrToken");
 const PendingCharge = require("./PendingCharge");
 const Redemption = require("./Redemption");
+const TopupQrToken = require("./TopupQrToken");
+const TopupPayment = require("./TopupPayment");
 
 User.hasOne(Wallet, {
     foreignKey: "user_id",
@@ -129,6 +131,144 @@ Redemption.belongsTo(QrToken, {
     as: "qrToken",
 });
 
+Wallet.hasMany(
+    TopupQrToken,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "topupQrTokens",
+    }
+);
+
+TopupQrToken.belongsTo(
+    Wallet,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "wallet",
+    }
+);
+
+
+TopupQrToken.belongsTo(
+    User,
+    {
+        foreignKey:
+            "claimed_by_user_id",
+
+        as:
+            "claimedBy",
+    }
+);
+
+
+Wallet.hasMany(
+    TopupPayment,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "topups",
+    }
+);
+
+TopupPayment.belongsTo(
+    Wallet,
+    {
+        foreignKey:
+            "wallet_id",
+
+        as:
+            "wallet",
+    }
+);
+
+
+Plan.hasMany(
+    TopupPayment,
+    {
+        foreignKey:
+            "plan_id",
+
+        as:
+            "topups",
+    }
+);
+
+TopupPayment.belongsTo(
+    Plan,
+    {
+        foreignKey:
+            "plan_id",
+
+        as:
+            "plan",
+    }
+);
+
+
+Location.hasMany(
+    TopupPayment,
+    {
+        foreignKey:
+            "location_id",
+
+        as:
+            "topups",
+    }
+);
+
+TopupPayment.belongsTo(
+    Location,
+    {
+        foreignKey:
+            "location_id",
+
+        as:
+            "location",
+    }
+);
+
+
+User.hasMany(
+    TopupPayment,
+    {
+        foreignKey:
+            "employee_user_id",
+
+        as:
+            "employeeTopups",
+    }
+);
+
+TopupPayment.belongsTo(
+    User,
+    {
+        foreignKey:
+            "employee_user_id",
+
+        as:
+            "employee",
+    }
+);
+
+
+TopupPayment.belongsTo(
+    TopupQrToken,
+    {
+        foreignKey:
+            "topup_qr_token_id",
+
+        as:
+            "qrToken",
+    }
+);
+
 module.exports = {
     User,
     Wallet,
@@ -140,4 +280,6 @@ module.exports = {
     QrToken,
     PendingCharge,
     Redemption,
+    TopupQrToken,
+    TopupPayment,
 };
