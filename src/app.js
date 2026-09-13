@@ -141,10 +141,10 @@ async function start() {
             (resolve) => {
                 app.listen(
                     PORT,
-                    "127.0.0.1",
+                    "0.0.0.0",
                     () => {
                         console.log(
-                            `✅ Camp Card API: 127.0.0.1:${PORT}`
+                            `✅ Camp Card API: 0.0.0.0:${PORT}`
                         );
 
                         resolve();
