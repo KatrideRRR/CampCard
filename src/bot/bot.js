@@ -17,6 +17,13 @@ const {
 } = require("../services/walletService");
 
 const {
+    getWalletHistory,
+    buildHistoryText,
+} = require(
+    "../services/historyService"
+);
+
+const {
     createTopupQr,
     claimTopupQr,
 } = require(
@@ -1179,9 +1186,143 @@ bot.command(
 bot.hears(
     "📜 История",
     async (ctx) => {
-        await ctx.reply(
-            "📜 История операций пока пуста."
-        );
+        try {
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const history =
+                await getWalletHistory({
+                    walletId:
+                    wallet.id,
+
+                    limit:
+                        8,
+                });
+
+
+            const keyboard =
+                [];
+
+
+            if (
+                history.hasMore &&
+                history.nextBeforeId
+            ) {
+                keyboard.push([
+                    Markup.button.callback(
+                        "Показать ещё",
+                        `history_more:${history.nextBeforeId}`
+                    ),
+                ]);
+            }
+
+
+            await ctx.reply(
+                buildHistoryText(
+                    history.items
+                ),
+
+                keyboard.length
+                    ? Markup.inlineKeyboard(
+                        keyboard
+                    )
+                    : undefined
+            );
+
+        } catch (error) {
+            console.error(
+                "History error:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось загрузить историю."
+            );
+        }
+    }
+);
+
+bot.action(
+    /^history_more:(\d+)$/,
+    async (ctx) => {
+        try {
+            const beforeId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const history =
+                await getWalletHistory({
+                    walletId:
+                    wallet.id,
+
+                    beforeId,
+
+                    limit:
+                        8,
+                });
+
+
+            await ctx.answerCbQuery();
+
+
+            const keyboard =
+                [];
+
+
+            if (
+                history.hasMore &&
+                history.nextBeforeId
+            ) {
+                keyboard.push([
+                    Markup.button.callback(
+                        "Показать ещё",
+                        `history_more:${history.nextBeforeId}`
+                    ),
+                ]);
+            }
+
+
+            await ctx.reply(
+                buildHistoryText(
+                    history.items
+                ),
+
+                keyboard.length
+                    ? Markup.inlineKeyboard(
+                        keyboard
+                    )
+                    : undefined
+            );
+
+        } catch (error) {
+            console.error(
+                "History more error:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось загрузить историю"
+                )
+                .catch(
+                    () => {}
+                );
+        }
     }
 );
 
