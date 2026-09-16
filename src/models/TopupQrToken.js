@@ -59,6 +59,13 @@ const TopupQrToken =
                 allowNull: true,
             },
 
+            location_id: {
+                type:
+                DataTypes.BIGINT.UNSIGNED,
+
+                allowNull: true,
+            },
+
             claimed_at: {
                 type: DataTypes.DATE,
                 allowNull: true,
