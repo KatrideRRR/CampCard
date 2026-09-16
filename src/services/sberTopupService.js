@@ -1,6 +1,10 @@
 const crypto =
     require("crypto");
 
+const {
+    Agent,
+} = require("undici");
+
 const sequelize =
     require("../config/database");
 
@@ -28,6 +32,21 @@ function getApiBaseUrl() {
     );
 }
 
+function isSandbox() {
+    return (
+        process.env.SBER_SANDBOX ===
+        "true"
+    );
+}
+
+
+const sandboxDispatcher =
+    new Agent({
+        connect: {
+            rejectUnauthorized:
+                false,
+        },
+    });
 
 function checkConfig() {
     const required = [
@@ -61,23 +80,34 @@ async function sberRequest(
     checkConfig();
 
 
+    const options = {
+        method:
+            "POST",
+
+        headers: {
+            "Content-Type":
+                "application/json",
+        },
+
+        body:
+            JSON.stringify(
+                body
+            ),
+    };
+
+
+    if (
+        isSandbox()
+    ) {
+        options.dispatcher =
+            sandboxDispatcher;
+    }
+
+
     const response =
         await fetch(
             `${getApiBaseUrl()}${path}`,
-            {
-                method:
-                    "POST",
-
-                headers: {
-                    "Content-Type":
-                        "application/json",
-                },
-
-                body:
-                    JSON.stringify(
-                        body
-                    ),
-            }
+            options
         );
 
 
@@ -249,7 +279,7 @@ async function createSberTopup({
                     process.env
                         .SBER_FAIL_URL,
 
-                    callbackUrl:
+                    dynamicCallbackUrl:
                     process.env
                         .SBER_CALLBACK_URL,
 
