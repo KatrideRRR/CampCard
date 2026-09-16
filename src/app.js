@@ -174,9 +174,6 @@ app.post(
                 !result.alreadyCredited
             ) {
                 try {
-
-                    await bot.telegram
-                        .sendMessage(
                     const paid =
                         Number(
                             result.payment
