@@ -2,6 +2,7 @@ const crypto =
     require("crypto");
 
 const {
+    fetch: undiciFetch,
     Agent,
 } = require("undici");
 
@@ -105,7 +106,7 @@ async function sberRequest(
 
 
     const response =
-        await fetch(
+        await undiciFetch(
             `${getApiBaseUrl()}${path}`,
             options
         );
