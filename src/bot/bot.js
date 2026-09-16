@@ -172,18 +172,17 @@ bot.start(async (ctx) => {
  */
         const topupMatch =
             payload.match(
-                /^topup_(cash|sbp)_(.+)$/
+                /^topup_cash_(.+)$/
             );
 
 
         if (topupMatch) {
 
             const paymentMethod =
-                topupMatch[1];
+                "cash";
 
             const rawToken =
-                topupMatch[2];
-
+                topupMatch[1];
 
             try {
 
@@ -229,10 +228,7 @@ bot.start(async (ctx) => {
 
 
                 const methodText =
-                    paymentMethod ===
-                    "sbp"
-                        ? "СБП"
-                        : "наличными";
+                    "наличными";
 
 
                 await ctx.reply(
@@ -1010,8 +1006,7 @@ bot.action(
                 qrBuffer,
             } =
                 await createTopupQr(
-                    wallet.id,
-                    "cash"
+                    wallet.id
                 );
 
 
@@ -1047,73 +1042,18 @@ bot.action(
 );
 
 bot.action(
-    "topup_sbp_qr",
-    async (ctx) => {
-        try {
-            await ctx.answerCbQuery();
-
-
-            const {
-                wallet,
-            } =
-                await getOrCreateTelegramUser(
-                    ctx.from
-                );
-
-
-            const {
-                qrBuffer,
-            } =
-                await createTopupQr(
-                    wallet.id,
-                    "sbp"
-                );
-
-
-            await ctx.replyWithPhoto(
-                {
-                    source:
-                    qrBuffer,
-                },
-                {
-                    caption: [
-                        "⚡ Пополнение Camp Card через СБП",
-                        "",
-                        "Покажите этот QR сотруднику.",
-                        "",
-                        "Сотрудник выберет пакет и сообщит реквизиты для перевода.",
-                        "",
-                        "После поступления перевода сотрудник подтвердит оплату.",
-                    ].join("\n"),
-                }
-            );
-
-        } catch (error) {
-            console.error(
-                "Create SBP topup QR:",
-                error
-            );
-
-            await ctx.reply(
-                "❌ Не удалось начать пополнение через СБП."
-            );
-        }
-    }
-);
-
-bot.action(
-    /^manual_topup_plan:(cash|sbp):(\d+):(.+)$/,
+    /^manual_topup_plan:cash:(\d+):(.+)$/,
     async (ctx) => {
         try {
 
             const paymentMethod =
-                ctx.match[1];
+                "cash";
 
             const qrTokenId =
-                ctx.match[2];
+                ctx.match[1];
 
             const planCode =
-                ctx.match[3];
+                ctx.match[2];
 
 
             const {
@@ -1151,52 +1091,6 @@ bot.action(
                     result.plan
                         .bonus_amount_kopecks
                 );
-
-
-            if (
-                paymentMethod ===
-                "sbp"
-            ) {
-
-                await ctx.reply(
-                    [
-                        "⚡ Пополнение через СБП",
-                        "",
-                        `📍 ${result.location.name}`,
-                        `Клиент: ${result.customer.first_name || "Клиент"}`,
-                        "",
-                        `Перевести: ${formatKopecks(paid)} ₽`,
-                        "",
-                        `📱 Номер: ${process.env.SBP_PHONE || "не указан"}`,
-                        `🏦 Банк: ${process.env.SBP_BANK || "не указан"}`,
-                        `👤 Получатель: ${process.env.SBP_RECIPIENT || "не указан"}`,
-                        "",
-                        `Бонус: +${formatKopecks(bonus)} ₽`,
-                        `На Camp Card: ${formatKopecks(paid + bonus)} ₽`,
-                        "",
-                        "После поступления денег проверьте перевод и нажмите кнопку ниже.",
-                    ].join("\n"),
-
-                    Markup.inlineKeyboard([
-                        [
-                            Markup.button.callback(
-                                "✅ Перевод получен",
-                                `manual_topup_confirm:${result.topup.id}`
-                            ),
-                        ],
-
-                        [
-                            Markup.button.callback(
-                                "❌ Отмена",
-                                `manual_topup_cancel:${result.topup.id}`
-                            ),
-                        ],
-                    ])
-                );
-
-                return;
-            }
-
 
             await ctx.reply(
                 [

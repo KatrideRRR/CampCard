@@ -28,12 +28,8 @@ function validatePaymentMethod(
     paymentMethod
 ) {
     if (
-        ![
-            "cash",
-            "sbp",
-        ].includes(
-            paymentMethod
-        )
+        paymentMethod !==
+        "cash"
     ) {
         throw new Error(
             "INVALID_PAYMENT_METHOD"
@@ -471,10 +467,7 @@ async function completeManualTopup({
     if (!paidTransaction) {
 
         const description =
-            topup.payment_method ===
-            "sbp"
-                ? `Пополнение по СБП ${plan.name}`
-                : `Наличное пополнение ${plan.name}`;
+            `Наличное пополнение ${plan.name}`;
 
 
         try {
