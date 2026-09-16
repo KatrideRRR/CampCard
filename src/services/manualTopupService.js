@@ -198,19 +198,16 @@ async function prepareManualTopup({
                     });
 
 
-            if (
-                !employeeLocation
-            ) {
+            if (!qrToken.location_id) {
                 throw new Error(
-                    "EMPLOYEE_LOCATION_NOT_SET"
+                    "TOPUP_LOCATION_NOT_SET"
                 );
             }
 
 
             const location =
                 await Location.findByPk(
-                    employeeLocation
-                        .location_id,
+                    qrToken.location_id,
                     {
                         transaction,
                     }

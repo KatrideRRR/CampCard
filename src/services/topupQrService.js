@@ -15,6 +15,11 @@ const {
     TopupQrToken,
 } = require("../models");
 
+const {
+    getCurrentEmployeeLocation,
+} = require(
+    "./employeeLocationService"
+);
 
 function hashToken(token) {
     return crypto
@@ -188,28 +193,16 @@ async function claimTopupQr({
             }
 
 
-            const employeeLocation =
-                await EmployeeLocation.findOne(
-                    {
-                        where: {
-                            user_id:
-                            employee.id,
+            const employeeData =
+                await getCurrentEmployeeLocation({
+                    userId:
+                    employee.id,
 
-                            is_active:
-                                true,
-                        },
-
-                        transaction,
-
-                        lock:
-                        transaction
-                            .LOCK
-                            .UPDATE,
-                    }
-                );
+                    transaction,
+                });
 
 
-            if (!employeeLocation) {
+            if (!employeeData) {
                 throw new Error(
                     "EMPLOYEE_LOCATION_NOT_SET"
                 );
@@ -217,13 +210,7 @@ async function claimTopupQr({
 
 
             const location =
-                await Location.findByPk(
-                    employeeLocation
-                        .location_id,
-                    {
-                        transaction,
-                    }
-                );
+                employeeData.location;
 
 
             if (!location) {
@@ -283,7 +270,16 @@ async function claimTopupQr({
                 await qrToken.update(
                     {
                         status:
-                            "expired",
+                            "claimed",
+
+                        claimed_by_user_id:
+                        employee.id,
+
+                        location_id:
+                        location.id,
+
+                        claimed_at:
+                            new Date(),
                     },
                     {
                         transaction,

@@ -51,9 +51,9 @@ WalletTransaction.hasMany(BonusLot, {
     as: "bonusLots",
 });
 
-User.hasOne(EmployeeLocation, {
+User.hasMany(EmployeeLocation, {
     foreignKey: "user_id",
-    as: "employeeLocation",
+    as: "employeeLocations",
 });
 
 EmployeeLocation.belongsTo(User, {

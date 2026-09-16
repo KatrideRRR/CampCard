@@ -8,9 +8,15 @@ const {
     QrToken,
     PendingCharge,
     Redemption,
-    EmployeeLocation,
     Location,
 } = require("../models");
+
+const {
+    getCurrentEmployeeLocation,
+    employeeHasLocation,
+} = require(
+    "./employeeLocationService"
+);
 
 const {
     hashToken,
@@ -57,41 +63,11 @@ async function getEmployeeLocation({
                                        userId,
                                        transaction = null,
                                    }) {
-    const employeeLocation =
-        await EmployeeLocation.findOne({
-            where: {
-                user_id: userId,
-                is_active: true,
-            },
-
-            transaction,
-        });
-
-    if (!employeeLocation) {
-        return null;
-    }
-
-    const location =
-        await Location.findByPk(
-            employeeLocation.location_id,
-            {
-                transaction,
-            }
-        );
-
-    if (
-        !location ||
-        !location.is_active
-    ) {
-        return null;
-    }
-
-    return {
-        employeeLocation,
-        location,
-    };
+    return getCurrentEmployeeLocation({
+        userId,
+        transaction,
+    });
 }
-
 
 async function claimPaymentQr({
                                   rawToken,
@@ -256,8 +232,7 @@ async function claimPaymentQr({
                         qrToken.id,
 
                         location_id:
-                        employeeData
-                            .location
+                            location
                             .id,
 
                         amount_kopecks:
@@ -582,30 +557,37 @@ async function completePendingCharge({
              * относится к этой точке.
              */
 
-            const employeeData =
-                await getEmployeeLocation({
+            const hasLocation =
+                await employeeHasLocation({
                     userId:
                     employeeUserId,
+
+                    locationId:
+                    pending.location_id,
 
                     transaction,
                 });
 
-            if (!employeeData) {
+
+            if (!hasLocation) {
                 throw new Error(
-                    "EMPLOYEE_LOCATION_NOT_SET"
+                    "EMPLOYEE_LOCATION_ACCESS_DENIED"
                 );
             }
 
-            if (
-                Number(
-                    employeeData.location.id
-                ) !==
-                Number(
-                    pending.location_id
-                )
-            ) {
+
+            const location =
+                await Location.findByPk(
+                    pending.location_id,
+                    {
+                        transaction,
+                    }
+                );
+
+
+            if (!location) {
                 throw new Error(
-                    "LOCATION_CHANGED"
+                    "LOCATION_NOT_FOUND"
                 );
             }
 
@@ -657,7 +639,7 @@ async function completePendingCharge({
                     amountKopecks,
 
                     description:
-                        `Оплата Camp Card — ${employeeData.location.name}`,
+                        `Оплата Camp Card — ${location.name}`,
 
                     externalRef:
                     eventId,
@@ -666,13 +648,11 @@ async function completePendingCharge({
                         eventId,
 
                         locationId:
-                        employeeData
-                            .location
+                       location
                             .id,
 
                         locationCode:
-                        employeeData
-                            .location
+                       location
                             .code,
 
                         employeeUserId,
@@ -694,9 +674,7 @@ async function completePendingCharge({
                         qrToken.wallet_id,
 
                         location_id:
-                        employeeData
-                            .location
-                            .id,
+                        location.id,
 
                         employee_user_id:
                         employeeUserId,
