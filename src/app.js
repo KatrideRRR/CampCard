@@ -33,6 +33,12 @@ const {
 );
 
 const {
+    formatKopecks,
+} = require(
+    "./services/walletService"
+);
+
+const {
     startBonusExpiryNotificationWorker,
 } = require(
     "./services/bonusNotificationService"
@@ -164,27 +170,82 @@ app.post(
 
             if (
                 result.completed &&
-                result.customer
+                result.customer &&
+                !result.alreadyCredited
             ) {
                 try {
 
                     await bot.telegram
                         .sendMessage(
-                            String(
-                                result
-                                    .customer
-                                    .telegram_id
-                            ),
-
-                            [
-                                "✅ Оплата через Сбер получена",
-                                "",
-                                `Пополнение: ${Number(result.payment.paid_amount_kopecks) / 100} ₽`,
-                                `Бонус: +${Number(result.payment.bonus_amount_kopecks) / 100} ₽`,
-                                "",
-                                "Camp Card пополнена автоматически.",
-                            ].join("\n")
+                    const paid =
+                        Number(
+                            result.payment
+                                .paid_amount_kopecks
                         );
+
+                    const bonus =
+                        Number(
+                            result.payment
+                                .bonus_amount_kopecks
+                        );
+
+                    const paidBalance =
+                        Number(
+                            result.wallet
+                                .paid_balance_kopecks || 0
+                        );
+
+                    const bonusBalance =
+                        Number(
+                            result.wallet
+                                .bonus_balance_kopecks || 0
+                        );
+
+                    const totalBalance =
+                        paidBalance +
+                        bonusBalance;
+
+
+                    await bot.telegram.sendMessage(
+                        String(
+                            result.customer.telegram_id
+                        ),
+
+                        [
+                            "✅ Camp Card пополнена",
+                            "",
+                            `Оплачено: ${formatKopecks(paid)} ₽`,
+                            `Бонус: +${formatKopecks(bonus)} ₽`,
+                            `Зачислено: ${formatKopecks(paid + bonus)} ₽`,
+                            "",
+                            `Основной баланс: ${formatKopecks(paidBalance)} ₽`,
+                            `Бонусы: ${formatKopecks(bonusBalance)} ₽`,
+                            `Доступно: ${formatKopecks(totalBalance)} ₽`,
+                        ].join("\n"),
+
+                        {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        {
+                                            text:
+                                                "💳 Моя Camp Card",
+                                            callback_data:
+                                                "card_back",
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text:
+                                                "📜 История",
+                                            callback_data:
+                                                "card_history",
+                                        },
+                                    ],
+                                ],
+                            },
+                        }
+                    );
 
                 } catch (
                     notifyError

@@ -152,6 +152,34 @@ function buildCardActionsKeyboard() {
     ]);
 }
 
+async function safeEditMessageText(
+    ctx,
+    text,
+    extra
+) {
+    try {
+        return await ctx.editMessageText(
+            text,
+            extra
+        );
+    } catch (error) {
+        const description =
+            error?.response?.description ||
+            "";
+
+        if (
+            error?.response?.error_code === 400 &&
+            description.includes(
+                "message is not modified"
+            )
+        ) {
+            return null;
+        }
+
+        throw error;
+    }
+}
+
 bot.start(async (ctx) => {
     try {
         const {
@@ -562,8 +590,8 @@ bot.action(
             ]);
 
 
-            await ctx.editMessageText(
-                [
+            await safeEditMessageText(
+                ctx,                [
                     "🏦 Онлайн-пополнение через Сбер",
                     "",
                     "Выберите пакет:",
@@ -670,7 +698,8 @@ bot.action(
         try {
             await ctx.answerCbQuery();
 
-            await ctx.editMessageText(
+            await safeEditMessageText(
+                ctx,
                 [
                     "💰 Пополнение Camp Card",
                     "",
@@ -726,7 +755,8 @@ bot.action(
 
             await ctx.answerCbQuery();
 
-            await ctx.editMessageText(
+            await safeEditMessageText(
+                ctx,
                 buildCardOverviewText(
                     overview
                 ),
