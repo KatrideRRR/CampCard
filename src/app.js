@@ -33,6 +33,12 @@ const {
 );
 
 const {
+    startReviewRequestWorker,
+} = require(
+    "./services/reviewRequestService"
+);
+
+const {
     formatKopecks,
 } = require(
     "./services/walletService"
@@ -383,6 +389,10 @@ async function start() {
         );
 
         startBonusExpiryNotificationWorker(
+            bot
+        );
+
+        startReviewRequestWorker(
             bot
         );
 

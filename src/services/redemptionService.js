@@ -274,8 +274,7 @@ async function claimPaymentQr({
             return {
                 pendingCharge,
 
-                location:
-                employeeData.location,
+                location,
 
                 wallet,
 

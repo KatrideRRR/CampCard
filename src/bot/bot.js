@@ -46,6 +46,12 @@ const {
 );
 
 const {
+    scheduleReviewRequest,
+} = require(
+    "../services/reviewRequestService"
+);
+
+const {
     getEmployees,
     getEmployeeDetails,
     addEmployeeLocation,
@@ -3318,6 +3324,50 @@ bot.action(
                     console.error(
                         "Customer notification:",
                         notifyError
+                    );
+                }
+            }
+
+            /*
+ * Планируем просьбу оставить
+ * отзыв после посещения.
+ *
+ * Ошибка этого механизма
+ * никак не влияет на оплату.
+ */
+            if (
+                result.customer?.id &&
+                result.location?.id &&
+                result.redemption?.id
+            ) {
+                try {
+                    const reviewResult =
+                        await scheduleReviewRequest({
+                            userId:
+                            result.customer.id,
+
+                            locationId:
+                            result.location.id,
+
+                            redemptionId:
+                            result.redemption.id,
+                        });
+
+
+                    if (
+                        reviewResult.scheduled
+                    ) {
+                        console.log(
+                            `[ReviewRequest] scheduled redemption=${result.redemption.id}`
+                        );
+                    }
+
+                } catch (
+                    reviewError
+                    ) {
+                    console.error(
+                        "Review request schedule:",
+                        reviewError
                     );
                 }
             }

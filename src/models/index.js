@@ -13,6 +13,7 @@ const TopupPayment = require("./TopupPayment");
 const BonusExpiryNotification = require("./BonusExpiryNotification");
 const SberTopupPayment = require("./SberTopupPayment");
 const EmployeeInvite = require("./EmployeeInvite");
+const ReviewRequest = require("./ReviewRequest");
 
 User.hasOne(Wallet, {
     foreignKey: "user_id",
@@ -373,6 +374,74 @@ EmployeeInvite.belongsTo(
     }
 );
 
+User.hasMany(
+    ReviewRequest,
+    {
+        foreignKey:
+            "user_id",
+
+        as:
+            "reviewRequests",
+    }
+);
+
+ReviewRequest.belongsTo(
+    User,
+    {
+        foreignKey:
+            "user_id",
+
+        as:
+            "user",
+    }
+);
+
+
+Location.hasMany(
+    ReviewRequest,
+    {
+        foreignKey:
+            "location_id",
+
+        as:
+            "reviewRequests",
+    }
+);
+
+ReviewRequest.belongsTo(
+    Location,
+    {
+        foreignKey:
+            "location_id",
+
+        as:
+            "location",
+    }
+);
+
+
+Redemption.hasOne(
+    ReviewRequest,
+    {
+        foreignKey:
+            "redemption_id",
+
+        as:
+            "reviewRequest",
+    }
+);
+
+ReviewRequest.belongsTo(
+    Redemption,
+    {
+        foreignKey:
+            "redemption_id",
+
+        as:
+            "redemption",
+    }
+);
+
 module.exports = {
     User,
     Wallet,
@@ -389,4 +458,5 @@ module.exports = {
     BonusExpiryNotification,
     SberTopupPayment,
     EmployeeInvite,
+    ReviewRequest,
 };
