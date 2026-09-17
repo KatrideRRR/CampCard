@@ -31,6 +31,14 @@ const {
 );
 
 const {
+    createEmployeeInvite,
+    acceptEmployeeInvite,
+    getActiveLocations,
+} = require(
+    "../services/employeeInviteService"
+);
+
+const {
     getEmployeeLocations,
     setCurrentEmployeeLocation,
 } = require(
@@ -159,20 +167,45 @@ const employeeKeyboard = Markup.keyboard([
     .persistent();
 
 
+const ownerKeyboard = Markup.keyboard([
+    [
+        "👥 Сотрудники",
+        "📍 Рабочая точка",
+    ],
+    [
+        "💳 Моя Camp Card",
+        "📱 Показать QR",
+    ],
+    [
+        "🎁 Пакеты",
+        "ℹ️ Помощь",
+    ],
+])
+    .resize()
+    .persistent();
+
 function getMainKeyboard(
     user
 ) {
     if (
         [
-            "employee",
-            "admin",
             "owner",
+            "admin",
         ].includes(
             user.role
         )
     ) {
+        return ownerKeyboard;
+    }
+
+
+    if (
+        user.role ===
+        "employee"
+    ) {
         return employeeKeyboard;
     }
+
 
     return customerKeyboard;
 }
@@ -235,6 +268,88 @@ bot.start(async (ctx) => {
         const payload =
             ctx.startPayload ||
             "";
+
+        const staffMatch =
+            payload.match(
+                /^staff_(.+)$/
+            );
+
+
+        if (staffMatch) {
+            try {
+                const result =
+                    await acceptEmployeeInvite({
+                        rawToken:
+                            staffMatch[1],
+
+                        userId:
+                        user.id,
+                    });
+
+
+                const locationNames =
+                    result.locations
+                        .map(
+                            location =>
+                                `• ${location.name}`
+                        )
+                        .join("\n");
+
+
+                await ctx.reply(
+                    [
+                        "✅ Вы добавлены как сотрудник Camp Card",
+                        "",
+                        "Доступные рабочие точки:",
+                        locationNames,
+                        "",
+                        "Перед началом работы выберите текущую точку через кнопку «📍 Рабочая точка».",
+                    ].join("\n"),
+
+                    getMainKeyboard(
+                        result.user
+                    )
+                );
+
+
+                return;
+
+            } catch (error) {
+                console.error(
+                    "Accept employee invite:",
+                    error
+                );
+
+
+                const messages = {
+                    INVITE_NOT_FOUND:
+                        "❌ Приглашение не найдено.",
+
+                    INVITE_ALREADY_USED:
+                        "❌ Это приглашение уже было использовано.",
+
+                    INVITE_NOT_ACTIVE:
+                        "❌ Это приглашение больше не действует.",
+
+                    INVITE_EXPIRED:
+                        "⌛ Срок действия приглашения истёк.",
+
+                    USER_BLOCKED:
+                        "❌ Для этого аккаунта доступ заблокирован.",
+                };
+
+
+                await ctx.reply(
+                    messages[
+                        error.message
+                        ] ||
+                    "❌ Не удалось принять приглашение."
+                );
+
+
+                return;
+            }
+        }
 
         /*
  * Сотрудник сканирует
@@ -946,6 +1061,287 @@ bot.hears(
 
             await ctx.reply(
                 "Не удалось создать QR."
+            );
+        }
+    }
+);
+
+bot.hears(
+    "👥 Сотрудники",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            if (
+                ![
+                    "owner",
+                    "admin",
+                ].includes(
+                    user.role
+                )
+            ) {
+                return;
+            }
+
+
+            await ctx.reply(
+                [
+                    "👥 Сотрудники Camp Card",
+                    "",
+                    "Здесь можно выдать кассиру доступ к одной или нескольким точкам.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "➕ Пригласить кассира",
+                            "employee_invite_create"
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Employees menu:",
+                error
+            );
+        }
+    }
+);
+
+bot.action(
+    "employee_invite_create",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            if (
+                ![
+                    "owner",
+                    "admin",
+                ].includes(
+                    user.role
+                )
+            ) {
+                await ctx.answerCbQuery(
+                    "Нет доступа"
+                );
+
+                return;
+            }
+
+
+            const locations =
+                await getActiveLocations();
+
+
+            const buttons =
+                locations.map(
+                    location => [
+                        Markup.button.callback(
+                            `📍 ${location.name}`,
+                            `employee_invite_location:${location.id}`
+                        ),
+                    ]
+                );
+
+
+            if (
+                locations.length > 1
+            ) {
+                buttons.push([
+                    Markup.button.callback(
+                        "🏪 Все точки",
+                        "employee_invite_all"
+                    ),
+                ]);
+            }
+
+
+            await ctx.answerCbQuery();
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "➕ Приглашение кассира",
+                    "",
+                    "Выберите, к каким точкам сотрудник получит доступ.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Employee invite menu:",
+                error
+            );
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_invite_location:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const result =
+                await createEmployeeInvite({
+                    createdByUserId:
+                    user.id,
+
+                    locationIds: [
+                        Number(
+                            ctx.match[1]
+                        ),
+                    ],
+                });
+
+
+            await ctx.answerCbQuery(
+                "Приглашение создано"
+            );
+
+
+            await ctx.reply(
+                [
+                    "✅ Приглашение кассира создано",
+                    "",
+                    `Точка: ${result.locations[0].name}`,
+                    "",
+                    "Отправьте сотруднику эту ссылку:",
+                    "",
+                    result.deepLink,
+                    "",
+                    "Ссылка одноразовая и действует 24 часа.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.url(
+                            "🔗 Открыть приглашение",
+                            result.deepLink
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Create employee invite:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось создать приглашение."
+            );
+        }
+    }
+);
+
+
+bot.action(
+    "employee_invite_all",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const locations =
+                await getActiveLocations();
+
+
+            const result =
+                await createEmployeeInvite({
+                    createdByUserId:
+                    user.id,
+
+                    locationIds:
+                        locations.map(
+                            location =>
+                                Number(
+                                    location.id
+                                )
+                        ),
+                });
+
+
+            await ctx.answerCbQuery(
+                "Приглашение создано"
+            );
+
+
+            const names =
+                result.locations
+                    .map(
+                        location =>
+                            `• ${location.name}`
+                    )
+                    .join("\n");
+
+
+            await ctx.reply(
+                [
+                    "✅ Приглашение кассира создано",
+                    "",
+                    "Доступные точки:",
+                    names,
+                    "",
+                    "Отправьте сотруднику эту ссылку:",
+                    "",
+                    result.deepLink,
+                    "",
+                    "Ссылка одноразовая и действует 24 часа.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.url(
+                            "🔗 Открыть приглашение",
+                            result.deepLink
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Create all-locations invite:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось создать приглашение."
             );
         }
     }

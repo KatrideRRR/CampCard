@@ -12,6 +12,7 @@ const TopupQrToken = require("./TopupQrToken");
 const TopupPayment = require("./TopupPayment");
 const BonusExpiryNotification = require("./BonusExpiryNotification");
 const SberTopupPayment = require("./SberTopupPayment");
+const EmployeeInvite = require("./EmployeeInvite");
 
 User.hasOne(Wallet, {
     foreignKey: "user_id",
@@ -338,6 +339,40 @@ SberTopupPayment.belongsTo(
     }
 );
 
+User.hasMany(
+    EmployeeInvite,
+    {
+        foreignKey:
+            "created_by_user_id",
+
+        as:
+            "createdEmployeeInvites",
+    }
+);
+
+EmployeeInvite.belongsTo(
+    User,
+    {
+        foreignKey:
+            "created_by_user_id",
+
+        as:
+            "creator",
+    }
+);
+
+
+EmployeeInvite.belongsTo(
+    User,
+    {
+        foreignKey:
+            "used_by_user_id",
+
+        as:
+            "usedBy",
+    }
+);
+
 module.exports = {
     User,
     Wallet,
@@ -353,4 +388,5 @@ module.exports = {
     TopupPayment,
     BonusExpiryNotification,
     SberTopupPayment,
+    EmployeeInvite,
 };
