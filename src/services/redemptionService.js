@@ -756,8 +756,7 @@ async function completePendingCharge({
             return {
                 redemption,
 
-                location:
-                employeeData.location,
+                location,
 
                 customer,
 
