@@ -31,6 +31,13 @@ const {
 );
 
 const {
+    getEmployeeLocations,
+    setCurrentEmployeeLocation,
+} = require(
+    "../services/employeeLocationService"
+);
+
+const {
     prepareManualTopup,
     completeManualTopup,
     cancelManualTopup,
@@ -134,6 +141,41 @@ const customerKeyboard = Markup.keyboard([
 ])
     .resize()
     .persistent();
+
+const employeeKeyboard = Markup.keyboard([
+    [
+        "📍 Рабочая точка",
+    ],
+    [
+        "💳 Моя Camp Card",
+        "📱 Показать QR",
+    ],
+    [
+        "🎁 Пакеты",
+        "ℹ️ Помощь",
+    ],
+])
+    .resize()
+    .persistent();
+
+
+function getMainKeyboard(
+    user
+) {
+    if (
+        [
+            "employee",
+            "admin",
+            "owner",
+        ].includes(
+            user.role
+        )
+    ) {
+        return employeeKeyboard;
+    }
+
+    return customerKeyboard;
+}
 
 function buildCardActionsKeyboard() {
     return Markup.inlineKeyboard([
@@ -403,7 +445,9 @@ bot.start(async (ctx) => {
             `👋 ${name}!\n\n` +
             `Добро пожаловать в Camp Card.\n\n` +
             `Пополняйте баланс заранее, получайте бонусы и оплачивайте покупки в наших заведениях.`,
-            customerKeyboard
+            getMainKeyboard(
+                user
+            )
         );
 
         const freshWallet =
@@ -907,6 +951,241 @@ bot.hears(
     }
 );
 
+bot.hears(
+    "📍 Рабочая точка",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            if (
+                ![
+                    "employee",
+                    "admin",
+                    "owner",
+                ].includes(
+                    user.role
+                )
+            ) {
+                await ctx.reply(
+                    "❌ У вас нет доступа к рабочим точкам."
+                );
+
+                return;
+            }
+
+
+            const assignments =
+                await getEmployeeLocations({
+                    userId:
+                    user.id,
+                });
+
+
+            if (
+                assignments.length ===
+                0
+            ) {
+                await ctx.reply(
+                    "❌ Вам пока не назначена ни одна рабочая точка."
+                );
+
+                return;
+            }
+
+
+            const buttons =
+                assignments.map(
+                    ({
+                         assignment,
+                         location,
+                     }) => {
+
+                        const prefix =
+                            assignment
+                                .is_current
+                                ? "✅"
+                                : "▫️";
+
+
+                        return [
+                            Markup.button.callback(
+                                `${prefix} ${location.name}`,
+                                `employee_location:${location.id}`
+                            ),
+                        ];
+                    }
+                );
+
+
+            const current =
+                assignments.find(
+                    ({
+                         assignment,
+                     }) =>
+                        assignment
+                            .is_current
+                );
+
+
+            await ctx.reply(
+                [
+                    "📍 Рабочая точка",
+                    "",
+                    current
+                        ? `Сейчас вы работаете: ${current.location.name}`
+                        : "Текущая точка не выбрана.",
+                    "",
+                    "Выберите точку, на которой вы сейчас работаете:",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Employee location menu:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось загрузить рабочие точки."
+            );
+        }
+    }
+);
+
+bot.action(
+    /^employee_location:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            if (
+                ![
+                    "employee",
+                    "admin",
+                    "owner",
+                ].includes(
+                    user.role
+                )
+            ) {
+                await ctx.answerCbQuery(
+                    "Нет доступа"
+                );
+
+                return;
+            }
+
+
+            const locationId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const result =
+                await setCurrentEmployeeLocation({
+                    userId:
+                    user.id,
+
+                    locationId,
+                });
+
+
+            await ctx.answerCbQuery(
+                `Точка: ${result.location.name}`
+            );
+
+
+            const assignments =
+                await getEmployeeLocations({
+                    userId:
+                    user.id,
+                });
+
+
+            const buttons =
+                assignments.map(
+                    ({
+                         assignment,
+                         location,
+                     }) => {
+
+                        const prefix =
+                            assignment
+                                .is_current
+                                ? "✅"
+                                : "▫️";
+
+
+                        return [
+                            Markup.button.callback(
+                                `${prefix} ${location.name}`,
+                                `employee_location:${location.id}`
+                            ),
+                        ];
+                    }
+                );
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "📍 Рабочая точка",
+                    "",
+                    `Сейчас вы работаете: ${result.location.name}`,
+                    "",
+                    "Все операции Camp Card будут записываться на эту точку.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Set employee location:",
+                error
+            );
+
+
+            const messages = {
+                EMPLOYEE_LOCATION_NOT_ASSIGNED:
+                    "❌ Эта точка вам не назначена.",
+
+                LOCATION_NOT_FOUND:
+                    "❌ Рабочая точка не найдена.",
+            };
+
+
+            await ctx
+                .answerCbQuery(
+                    messages[
+                        error.message
+                        ] ||
+                    "Не удалось переключить точку"
+                )
+                .catch(() => {});
+        }
+    }
+);
+
 bot.command(
     "dev_location",
     async (ctx) => {
@@ -973,33 +1252,48 @@ bot.command(
                 role: "owner",
             });
 
-            const existing =
+            let assignment =
                 await EmployeeLocation.findOne({
                     where: {
-                        user_id: user.id,
+                        user_id:
+                        user.id,
+
+                        location_id:
+                        location.id,
                     },
                 });
 
-            if (existing) {
-                await existing.update({
-                    location_id:
-                    location.id,
 
+            if (assignment) {
+                await assignment.update({
                     is_active:
                         true,
                 });
             } else {
-                await EmployeeLocation.create({
-                    user_id:
-                    user.id,
+                assignment =
+                    await EmployeeLocation.create({
+                        user_id:
+                        user.id,
 
-                    location_id:
-                    location.id,
+                        location_id:
+                        location.id,
 
-                    is_active:
-                        true,
-                });
+                        is_active:
+                            true,
+
+                        is_current:
+                            false,
+                    });
             }
+
+
+            await setCurrentEmployeeLocation({
+                userId:
+                user.id,
+
+                locationId:
+                location.id,
+            });
 
             await ctx.reply(
                 `✅ Рабочая точка: ${location.name}`
