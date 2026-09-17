@@ -46,6 +46,16 @@ const {
 );
 
 const {
+    getEmployees,
+    getEmployeeDetails,
+    addEmployeeLocation,
+    removeEmployeeLocation,
+    revokeEmployeeAccess,
+} = require(
+    "../services/employeeManagementService"
+);
+
+const {
     prepareManualTopup,
     completeManualTopup,
     cancelManualTopup,
@@ -253,6 +263,232 @@ async function safeEditMessageText(
 
         throw error;
     }
+}
+
+function getEmployeeDisplayName(
+    employee
+) {
+    const fullName =
+        [
+            employee.first_name,
+            employee.last_name,
+        ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+
+    if (fullName) {
+        return fullName;
+    }
+
+
+    if (employee.username) {
+        return `@${employee.username}`;
+    }
+
+
+    return `Сотрудник #${employee.id}`;
+}
+
+
+async function showEmployeesMenu({
+                                     ctx,
+                                     managerUserId,
+                                     edit = false,
+                                 }) {
+    const employees =
+        await getEmployees({
+            managerUserId,
+        });
+
+
+    const buttons = [
+        [
+            Markup.button.callback(
+                "➕ Пригласить кассира",
+                "employee_invite_create"
+            ),
+        ],
+    ];
+
+
+    for (
+        const item
+        of employees
+        ) {
+        const current =
+            item.assignments.find(
+                ({
+                     assignment,
+                 }) =>
+                    assignment
+                        .is_current
+            );
+
+
+        const suffix =
+            current
+                ? ` — ${current.location.name}`
+                : "";
+
+
+        buttons.push([
+            Markup.button.callback(
+                `👤 ${getEmployeeDisplayName(item.employee)}${suffix}`,
+                `employee_manage:${item.employee.id}`
+            ),
+        ]);
+    }
+
+
+    const text = [
+        "👥 Сотрудники Camp Card",
+        "",
+        employees.length
+            ? `Активных сотрудников: ${employees.length}`
+            : "Активных сотрудников пока нет.",
+        "",
+        "Выберите сотрудника для управления или создайте новое приглашение.",
+    ].join("\n");
+
+
+    if (edit) {
+        return safeEditMessageText(
+            ctx,
+            text,
+            Markup.inlineKeyboard(
+                buttons
+            )
+        );
+    }
+
+
+    return ctx.reply(
+        text,
+        Markup.inlineKeyboard(
+            buttons
+        )
+    );
+}
+
+
+async function showEmployeeDetails({
+                                       ctx,
+                                       managerUserId,
+                                       employeeUserId,
+                                       edit = true,
+                                   }) {
+    const details =
+        await getEmployeeDetails({
+            managerUserId,
+            employeeUserId,
+        });
+
+
+    const employee =
+        details.employee;
+
+
+    const username =
+        employee.username
+            ? `@${employee.username}`
+            : "не указан";
+
+
+    const locationLines =
+        details.assignments.length
+            ? details.assignments
+                .map(
+                    ({
+                         assignment,
+                         location,
+                     }) =>
+                        assignment
+                            .is_current
+                            ? `✅ ${location.name} — текущая`
+                            : `• ${location.name}`
+                )
+                .join("\n")
+            : "Нет назначенных точек";
+
+
+    const buttons = [];
+
+
+    if (
+        details
+            .availableLocations
+            .length > 0
+    ) {
+        buttons.push([
+            Markup.button.callback(
+                "➕ Добавить точку",
+                `employee_add_location_menu:${employee.id}`
+            ),
+        ]);
+    }
+
+
+    if (
+        details
+            .assignments
+            .length > 1
+    ) {
+        buttons.push([
+            Markup.button.callback(
+                "➖ Убрать точку",
+                `employee_remove_location_menu:${employee.id}`
+            ),
+        ]);
+    }
+
+
+    buttons.push([
+        Markup.button.callback(
+            "🚫 Отозвать доступ",
+            `employee_revoke_confirm:${employee.id}`
+        ),
+    ]);
+
+
+    buttons.push([
+        Markup.button.callback(
+            "⬅️ К сотрудникам",
+            "employees_back"
+        ),
+    ]);
+
+
+    const text = [
+        "👤 Сотрудник Camp Card",
+        "",
+        `Имя: ${getEmployeeDisplayName(employee)}`,
+        `Telegram: ${username}`,
+        `User ID: ${employee.id}`,
+        "",
+        "Доступ к точкам:",
+        locationLines,
+    ].join("\n");
+
+
+    if (edit) {
+        return safeEditMessageText(
+            ctx,
+            text,
+            Markup.inlineKeyboard(
+                buttons
+            )
+        );
+    }
+
+
+    return ctx.reply(
+        text,
+        Markup.inlineKeyboard(
+            buttons
+        )
+    );
 }
 
 bot.start(async (ctx) => {
@@ -1090,27 +1326,24 @@ bot.hears(
             }
 
 
-            await ctx.reply(
-                [
-                    "👥 Сотрудники Camp Card",
-                    "",
-                    "Здесь можно выдать кассиру доступ к одной или нескольким точкам.",
-                ].join("\n"),
+            await showEmployeesMenu({
+                ctx,
 
-                Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback(
-                            "➕ Пригласить кассира",
-                            "employee_invite_create"
-                        ),
-                    ],
-                ])
-            );
+                managerUserId:
+                user.id,
+
+                edit:
+                    false,
+            });
 
         } catch (error) {
             console.error(
                 "Employees menu:",
                 error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось загрузить сотрудников."
             );
         }
     }
@@ -1343,6 +1576,615 @@ bot.action(
             await ctx.reply(
                 "❌ Не удалось создать приглашение."
             );
+        }
+    }
+);
+
+bot.action(
+    "employees_back",
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            await ctx.answerCbQuery();
+
+
+            await showEmployeesMenu({
+                ctx,
+
+                managerUserId:
+                user.id,
+
+                edit:
+                    true,
+            });
+
+        } catch (error) {
+            console.error(
+                "Employees back:",
+                error
+            );
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_manage:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            await ctx.answerCbQuery();
+
+
+            await showEmployeeDetails({
+                ctx,
+
+                managerUserId:
+                user.id,
+
+                employeeUserId,
+
+                edit:
+                    true,
+            });
+
+        } catch (error) {
+            console.error(
+                "Employee manage:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось открыть сотрудника"
+                )
+                .catch(() => {});
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_add_location_menu:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const details =
+                await getEmployeeDetails({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+                });
+
+
+            const buttons =
+                details
+                    .availableLocations
+                    .map(
+                        location => [
+                            Markup.button.callback(
+                                `➕ ${location.name}`,
+                                `employee_add_location:${employeeUserId}:${location.id}`
+                            ),
+                        ]
+                    );
+
+
+            buttons.push([
+                Markup.button.callback(
+                    "⬅️ Назад",
+                    `employee_manage:${employeeUserId}`
+                ),
+            ]);
+
+
+            await ctx.answerCbQuery();
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "➕ Добавить рабочую точку",
+                    "",
+                    `Сотрудник: ${getEmployeeDisplayName(details.employee)}`,
+                    "",
+                    "Выберите точку:",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Employee add location menu:",
+                error
+            );
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_add_location:(\d+):(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+            const locationId =
+                Number(
+                    ctx.match[2]
+                );
+
+
+            const result =
+                await addEmployeeLocation({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+
+                    locationId,
+                });
+
+
+            await ctx.answerCbQuery(
+                `Добавлена: ${result.location.name}`
+            );
+
+
+            try {
+                await ctx.telegram.sendMessage(
+                    String(
+                        result.employee
+                            .telegram_id
+                    ),
+
+                    [
+                        "✅ Вам добавлена рабочая точка Camp Card.",
+                        "",
+                        `📍 ${result.location.name}`,
+                        "",
+                        "Вы можете выбрать её через кнопку «📍 Рабочая точка».",
+                    ].join("\n")
+                );
+            } catch (notifyError) {
+                console.error(
+                    "Employee add location notify:",
+                    notifyError
+                );
+            }
+
+
+            await showEmployeeDetails({
+                ctx,
+
+                managerUserId:
+                user.id,
+
+                employeeUserId,
+
+                edit:
+                    true,
+            });
+
+        } catch (error) {
+            console.error(
+                "Employee add location:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось добавить точку"
+                )
+                .catch(() => {});
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_remove_location_menu:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const details =
+                await getEmployeeDetails({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+                });
+
+
+            if (
+                details.assignments.length <=
+                1
+            ) {
+                await ctx.answerCbQuery(
+                    "Последнюю точку можно убрать только через отзыв доступа."
+                );
+
+                return;
+            }
+
+
+            const buttons =
+                details.assignments.map(
+                    ({
+                         assignment,
+                         location,
+                     }) => [
+                        Markup.button.callback(
+                            `${assignment.is_current ? "✅ " : ""}➖ ${location.name}`,
+                            `employee_remove_location:${employeeUserId}:${location.id}`
+                        ),
+                    ]
+                );
+
+
+            buttons.push([
+                Markup.button.callback(
+                    "⬅️ Назад",
+                    `employee_manage:${employeeUserId}`
+                ),
+            ]);
+
+
+            await ctx.answerCbQuery();
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "➖ Убрать рабочую точку",
+                    "",
+                    `Сотрудник: ${getEmployeeDisplayName(details.employee)}`,
+                    "",
+                    "Выберите точку, доступ к которой нужно убрать:",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+            console.error(
+                "Employee remove location menu:",
+                error
+            );
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_remove_location:(\d+):(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+            const locationId =
+                Number(
+                    ctx.match[2]
+                );
+
+
+            const result =
+                await removeEmployeeLocation({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+
+                    locationId,
+                });
+
+
+            await ctx.answerCbQuery(
+                `Убрана: ${result.location.name}`
+            );
+
+
+            try {
+                const lines = [
+                    "⚠️ Изменён доступ Camp Card.",
+                    "",
+                    `Убрана рабочая точка: ${result.location.name}`,
+                ];
+
+
+                if (
+                    result.newCurrentLocation
+                ) {
+                    lines.push(
+                        "",
+                        `Текущая точка автоматически изменена на: ${result.newCurrentLocation.name}`
+                    );
+                }
+
+
+                await ctx.telegram.sendMessage(
+                    String(
+                        result.employee
+                            .telegram_id
+                    ),
+
+                    lines.join("\n")
+                );
+
+            } catch (notifyError) {
+                console.error(
+                    "Employee remove location notify:",
+                    notifyError
+                );
+            }
+
+
+            await showEmployeeDetails({
+                ctx,
+
+                managerUserId:
+                user.id,
+
+                employeeUserId,
+
+                edit:
+                    true,
+            });
+
+        } catch (error) {
+            console.error(
+                "Employee remove location:",
+                error
+            );
+
+
+            const messages = {
+                EMPLOYEE_LAST_LOCATION:
+                    "Последнюю точку нельзя убрать. Используйте «Отозвать доступ».",
+
+                EMPLOYEE_LOCATION_NOT_FOUND:
+                    "Эта точка сотруднику не назначена.",
+            };
+
+
+            await ctx
+                .answerCbQuery(
+                    messages[
+                        error.message
+                        ] ||
+                    "Не удалось убрать точку"
+                )
+                .catch(() => {});
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_revoke_confirm:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const details =
+                await getEmployeeDetails({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+                });
+
+
+            await ctx.answerCbQuery();
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "🚫 Отозвать доступ сотрудника?",
+                    "",
+                    `Сотрудник: ${getEmployeeDisplayName(details.employee)}`,
+                    "",
+                    "Будут отключены все рабочие точки.",
+                    "Сотрудник больше не сможет принимать оплату или пополнять Camp Card.",
+                    "",
+                    "Его обычная клиентская Camp Card останется доступна.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "🚫 Да, отозвать доступ",
+                            `employee_revoke:${employeeUserId}`
+                        ),
+                    ],
+
+                    [
+                        Markup.button.callback(
+                            "⬅️ Отмена",
+                            `employee_manage:${employeeUserId}`
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+            console.error(
+                "Employee revoke confirm:",
+                error
+            );
+        }
+    }
+);
+
+
+bot.action(
+    /^employee_revoke:(\d+)$/,
+    async (ctx) => {
+        try {
+            const {
+                user,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const employeeUserId =
+                Number(
+                    ctx.match[1]
+                );
+
+
+            const result =
+                await revokeEmployeeAccess({
+                    managerUserId:
+                    user.id,
+
+                    employeeUserId,
+                });
+
+
+            await ctx.answerCbQuery(
+                "Доступ отозван"
+            );
+
+
+            try {
+                await ctx.telegram.sendMessage(
+                    String(
+                        result.employee
+                            .telegram_id
+                    ),
+
+                    [
+                        "🚫 Доступ сотрудника Camp Card отозван.",
+                        "",
+                        "Вы больше не можете проводить операции как кассир.",
+                        "",
+                        "Ваша личная Camp Card продолжает работать как обычно.",
+                    ].join("\n"),
+
+                    customerKeyboard
+                );
+            } catch (notifyError) {
+                console.error(
+                    "Employee revoke notify:",
+                    notifyError
+                );
+            }
+
+
+            await showEmployeesMenu({
+                ctx,
+
+                managerUserId:
+                user.id,
+
+                edit:
+                    true,
+            });
+
+        } catch (error) {
+            console.error(
+                "Employee revoke:",
+                error
+            );
+
+            await ctx
+                .answerCbQuery(
+                    "Не удалось отозвать доступ"
+                )
+                .catch(() => {});
         }
     }
 );
