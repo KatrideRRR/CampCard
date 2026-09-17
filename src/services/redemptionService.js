@@ -118,6 +118,9 @@ async function claimPaymentQr({
                 );
             }
 
+            const location =
+                employeeData.location;
+
             const tokenHash =
                 hashToken(rawToken);
 
