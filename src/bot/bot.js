@@ -605,6 +605,14 @@ bot.start(async (ctx) => {
 
         if (topupMatch) {
 
+            console.log(
+                "[CashTopup] QR payload received",
+                {
+                    employeeTelegramId:
+                    ctx.from?.id,
+                }
+            );
+
             const paymentMethod =
                 "cash";
 
@@ -620,6 +628,23 @@ bot.start(async (ctx) => {
                         employeeUserId:
                         user.id,
                     });
+
+                console.log(
+                    "[CashTopup] QR claimed",
+                    {
+                        employeeUserId:
+                        user.id,
+
+                        qrTokenId:
+                        result.qrToken.id,
+
+                        locationId:
+                        result.location.id,
+
+                        location:
+                        result.location.name,
+                    }
+                );
 
 
                 const plans =

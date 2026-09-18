@@ -75,8 +75,8 @@ async function createTopupQr(
             const ttlSeconds =
                 Number(
                     process.env
-                        .QR_TTL_SECONDS ||
-                    90
+                        .TOPUP_QR_TTL_SECONDS ||
+                    300
                 );
 
 
@@ -337,6 +337,9 @@ async function claimTopupQr({
                     claimed_by_user_id:
                     employee.id,
 
+                    location_id:
+                    location.id,
+
                     claimed_at:
                         new Date(),
                 },
@@ -344,7 +347,6 @@ async function claimTopupQr({
                     transaction,
                 }
             );
-
 
             return {
                 qrToken,
