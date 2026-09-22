@@ -50,6 +50,13 @@ const {
     "./services/bonusNotificationService"
 );
 
+const {
+    verifyTbankNotification,
+    finalizeTbankTopup,
+} = require(
+    "./services/tbankTopupService"
+);
+
 const app = express();
 
 const PORT = Number(
@@ -73,6 +80,11 @@ app.use(
     express.json()
 );
 
+app.use(
+    express.urlencoded({
+        extended: false,
+    })
+);
 
 /*
  * Telegram webhook.
@@ -124,6 +136,218 @@ app.get(
             timestamp:
                 new Date().toISOString(),
         });
+    }
+);
+
+app.post(
+    "/campcard-tbank/callback",
+
+    async (req, res) => {
+
+        const payload =
+            req.body || {};
+
+
+        try {
+
+            console.log(
+                "[TBank callback]",
+                {
+                    PaymentId:
+                    payload.PaymentId,
+
+                    OrderId:
+                    payload.OrderId,
+
+                    Status:
+                    payload.Status,
+
+                    Success:
+                    payload.Success,
+
+                    ErrorCode:
+                    payload.ErrorCode,
+
+                    Amount:
+                    payload.Amount,
+                }
+            );
+
+
+            /*
+             * Сначала обязательно
+             * проверяем подпись банка.
+             */
+            if (
+                !verifyTbankNotification(
+                    payload
+                )
+            ) {
+
+                console.error(
+                    "[TBank callback] invalid token"
+                );
+
+
+                return res
+                    .status(403)
+                    .send(
+                        "INVALID TOKEN"
+                    );
+            }
+
+
+            /*
+             * При одностадийной оплате
+             * могут прийти AUTHORIZED
+             * и CONFIRMED.
+             *
+             * Деньги на Camp Card
+             * зачисляем только CONFIRMED.
+             */
+            if (
+                payload.Status !==
+                "CONFIRMED"
+            ) {
+
+                return res
+                    .status(200)
+                    .send("OK");
+            }
+
+
+            const result =
+                await finalizeTbankTopup({
+                    paymentId:
+                    payload.PaymentId,
+
+                    orderId:
+                    payload.OrderId,
+                });
+
+
+            if (
+                result.completed &&
+                result.customer &&
+                !result.alreadyCredited
+            ) {
+
+                try {
+
+                    const paid =
+                        Number(
+                            result.payment
+                                .paid_amount_kopecks
+                        );
+
+                    const bonus =
+                        Number(
+                            result.payment
+                                .bonus_amount_kopecks
+                        );
+
+                    const paidBalance =
+                        Number(
+                            result.wallet
+                                .paid_balance_kopecks ||
+                            0
+                        );
+
+                    const bonusBalance =
+                        Number(
+                            result.wallet
+                                .bonus_balance_kopecks ||
+                            0
+                        );
+
+                    const totalBalance =
+                        paidBalance +
+                        bonusBalance;
+
+
+                    await bot.telegram.sendMessage(
+                        String(
+                            result.customer
+                                .telegram_id
+                        ),
+
+                        [
+                            "✅ Camp Card пополнена",
+                            "",
+                            "💳 Оплата через Т-Банк",
+                            "",
+                            `Оплачено: ${formatKopecks(paid)} ₽`,
+                            `Бонус: +${formatKopecks(bonus)} ₽`,
+                            `Зачислено: ${formatKopecks(paid + bonus)} ₽`,
+                            "",
+                            `Основной баланс: ${formatKopecks(paidBalance)} ₽`,
+                            `Бонусы: ${formatKopecks(bonusBalance)} ₽`,
+                            `Доступно: ${formatKopecks(totalBalance)} ₽`,
+                        ].join("\n"),
+
+                        {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        {
+                                            text:
+                                                "💳 Моя Camp Card",
+
+                                            callback_data:
+                                                "card_back",
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text:
+                                                "📜 История",
+
+                                            callback_data:
+                                                "card_history",
+                                        },
+                                    ],
+                                ],
+                            },
+                        }
+                    );
+
+                } catch (
+                    notifyError
+                    ) {
+
+                    console.error(
+                        "TBank notify customer:",
+                        notifyError
+                    );
+                }
+            }
+
+
+            /*
+             * Т-Банк требует именно
+             * строку OK.
+             */
+            return res
+                .status(200)
+                .send("OK");
+
+
+        } catch (error) {
+
+            console.error(
+                "TBank callback error:",
+                error
+            );
+
+
+            /*
+             * Если внутренняя обработка
+             * не удалась — НЕ отвечаем OK.
+             * Тогда банк повторит callback.
+             */
+            return res
+                .sendStatus(500);
+        }
     }
 );
 

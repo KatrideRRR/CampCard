@@ -31,6 +31,12 @@ const {
 );
 
 const {
+    createTbankTopup,
+} = require(
+    "../services/tbankTopupService"
+);
+
+const {
     createEmployeeInvite,
     acceptEmployeeInvite,
     getActiveLocations,
@@ -894,6 +900,160 @@ bot.hears(
 );
 
 bot.action(
+    "tbank_topup",
+    async (ctx) => {
+        try {
+            await ctx.answerCbQuery();
+
+            const plans =
+                await getActivePlans();
+
+
+            const buttons =
+                plans.map(
+                    (plan) => {
+
+                        const paid =
+                            Number(
+                                plan
+                                    .topup_amount_kopecks
+                            );
+
+                        const bonus =
+                            Number(
+                                plan
+                                    .bonus_amount_kopecks
+                            );
+
+
+                        return [
+                            Markup.button.callback(
+                                `${formatKopecks(paid)} ₽ → ${formatKopecks(paid + bonus)} ₽`,
+
+                                `tbank_plan:${plan.code}`
+                            ),
+                        ];
+                    }
+                );
+
+
+            buttons.push([
+                Markup.button.callback(
+                    "⬅️ Назад",
+                    "card_topup"
+                ),
+            ]);
+
+
+            await safeEditMessageText(
+                ctx,
+
+                [
+                    "💳 Онлайн-пополнение",
+                    "",
+                    "Выберите пакет:",
+                    "",
+                    "После оплаты баланс Camp Card пополнится автоматически.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+        } catch (error) {
+
+            console.error(
+                "TBank menu:",
+                error
+            );
+        }
+    }
+);
+
+bot.action(
+    /^tbank_plan:(.+)$/,
+    async (ctx) => {
+        try {
+
+            await ctx.answerCbQuery(
+                "Создаём оплату..."
+            );
+
+
+            const planCode =
+                ctx.match[1];
+
+
+            const {
+                wallet,
+            } =
+                await getOrCreateTelegramUser(
+                    ctx.from
+                );
+
+
+            const result =
+                await createTbankTopup({
+                    walletId:
+                    wallet.id,
+
+                    planCode,
+                });
+
+
+            const paid =
+                Number(
+                    result.plan
+                        .topup_amount_kopecks
+                );
+
+            const bonus =
+                Number(
+                    result.plan
+                        .bonus_amount_kopecks
+                );
+
+
+            await ctx.reply(
+                [
+                    "💳 Пополнение Camp Card",
+                    "",
+                    `К оплате: ${formatKopecks(paid)} ₽`,
+                    `Бонус: +${formatKopecks(bonus)} ₽`,
+                    `На Camp Card поступит: ${formatKopecks(paid + bonus)} ₽`,
+                    "",
+                    "Нажмите кнопку ниже и завершите оплату на защищённой странице Т-Банка.",
+                    "",
+                    "После подтверждения банком баланс пополнится автоматически.",
+                ].join("\n"),
+
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.url(
+                            `Оплатить ${formatKopecks(paid)} ₽`,
+                            result.paymentUrl
+                        ),
+                    ],
+                ])
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Create TBank topup:",
+                error
+            );
+
+
+            await ctx.reply(
+                "❌ Не удалось создать оплату через Т-Банк."
+            );
+        }
+    }
+);
+
+bot.action(
     "card_show_qr",
     async (ctx) => {
         try {
@@ -1141,8 +1301,8 @@ bot.action(
                     ],
                     [
                         Markup.button.callback(
-                            "🏦 Онлайн через Сбер",
-                            "sber_topup"
+                            "💳 Онлайн через Т-Банк",
+                            "tbank_topup"
                         ),
                     ],
                     [
