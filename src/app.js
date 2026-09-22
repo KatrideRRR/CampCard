@@ -385,6 +385,11 @@ async function start() {
             {
                 secret_token:
                 WEBHOOK_SECRET,
+
+                allowed_updates: [
+                    "message",
+                    "callback_query",
+                ],
             }
         );
 
