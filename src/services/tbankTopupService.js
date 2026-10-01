@@ -285,6 +285,60 @@ async function createTbankTopup({
 
     try {
 
+        const customer =
+            await User.findByPk(
+                wallet.user_id
+            );
+
+
+        const receipt = {
+            Taxation:
+                process.env.TBANK_TAXATION ||
+                "usn_income",
+
+            Email:
+            process.env
+                .TBANK_RECEIPT_EMAIL,
+
+            Items: [
+                {
+                    Name:
+                        `Пополнение Camp Card — ${plan.name}`,
+
+                    Price:
+                    paidAmount,
+
+                    Quantity:
+                        1,
+
+                    Amount:
+                    paidAmount,
+
+                    Tax:
+                        process.env
+                            .TBANK_RECEIPT_TAX ||
+                        "none",
+
+                    /*
+                     * Пополнение Camp Card —
+                     * внесение предоплаты/аванса,
+                     * а не продажа блюда сейчас.
+                     */
+                    PaymentMethod:
+                        "advance",
+
+                    PaymentObject:
+                        "payment",
+
+                    /*
+                     * Для ФФД 1.2 обязательное поле.
+                     */
+                    MeasurementUnit:
+                        "шт",
+                },
+            ],
+        };
+
         const response =
             await tbankRequest(
                 "Init",
@@ -309,6 +363,9 @@ async function createTbankTopup({
                     FailURL:
                     process.env
                         .TBANK_FAIL_URL,
+
+                    Receipt:
+                    receipt,
 
                     DATA: {
                         OperationInitiatorType:
