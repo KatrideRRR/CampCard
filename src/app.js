@@ -53,6 +53,7 @@ const {
 const {
     verifyTbankNotification,
     finalizeTbankTopup,
+    recordTbankNotification,
 } = require(
     "./services/tbankTopupService"
 );
@@ -209,6 +210,97 @@ app.post(
                 payload.Status !==
                 "CONFIRMED"
             ) {
+
+                const result =
+                    await recordTbankNotification({
+                        paymentId:
+                        payload.PaymentId,
+
+                        orderId:
+                        payload.OrderId,
+
+                        bankStatus:
+                        payload.Status,
+
+                        errorCode:
+                        payload.ErrorCode,
+
+                        message:
+                        payload.Message,
+
+                        details:
+                        payload.Details,
+                    });
+
+
+                /*
+                 * AUTH_FAIL может быть промежуточным:
+                 * пользователь ещё может попробовать
+                 * оплатить повторно.
+                 *
+                 * Клиенту сообщаем только
+                 * окончательный REJECTED.
+                 */
+                if (
+                    result.shouldNotifyFailure &&
+                    result.customer
+                ) {
+
+                    try {
+
+                        await bot.telegram.sendMessage(
+                            String(
+                                result.customer
+                                    .telegram_id
+                            ),
+
+                            [
+                                "❌ Оплата не прошла",
+                                "",
+                                "Т-Банк отклонил платёж.",
+                                "",
+                                "Средства на Camp Card не зачислены.",
+                                "",
+                                "Вы можете попробовать оплатить ещё раз.",
+                            ].join("\n"),
+
+                            {
+                                reply_markup: {
+                                    inline_keyboard: [
+                                        [
+                                            {
+                                                text:
+                                                    "💳 Попробовать снова",
+
+                                                callback_data:
+                                                    "tbank_topup",
+                                            },
+                                        ],
+                                        [
+                                            {
+                                                text:
+                                                    "💳 Моя Camp Card",
+
+                                                callback_data:
+                                                    "card_back",
+                                            },
+                                        ],
+                                    ],
+                                },
+                            }
+                        );
+
+                    } catch (
+                        notifyError
+                        ) {
+
+                        console.error(
+                            "TBank failed payment notify:",
+                            notifyError
+                        );
+                    }
+                }
+
 
                 return res
                     .status(200)

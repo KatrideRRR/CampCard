@@ -722,6 +722,136 @@ async function finalizeTbankTopup({
     };
 }
 
+async function recordTbankNotification({
+                                           paymentId = null,
+                                           orderId = null,
+                                           bankStatus = null,
+                                           errorCode = null,
+                                           message = null,
+                                           details = null,
+                                       }) {
+
+    let payment = null;
+
+
+    if (paymentId) {
+        payment =
+            await TbankTopupPayment.findOne({
+                where: {
+                    tbank_payment_id:
+                        String(paymentId),
+                },
+            });
+    }
+
+
+    if (
+        !payment &&
+        orderId
+    ) {
+        payment =
+            await TbankTopupPayment.findOne({
+                where: {
+                    order_id:
+                        String(orderId),
+                },
+            });
+    }
+
+
+    if (!payment) {
+        throw new Error(
+            "TBANK_TOPUP_NOT_FOUND"
+        );
+    }
+
+
+    /*
+     * Чтобы при повторном callback
+     * не отправлять клиенту одно
+     * и то же сообщение несколько раз.
+     */
+    const shouldNotifyFailure =
+        bankStatus === "REJECTED" &&
+        payment.bank_status !==
+        "REJECTED";
+
+
+    const updateData = {
+        bank_status:
+            bankStatus ||
+            payment.bank_status,
+    };
+
+
+    /*
+     * AUTH_FAIL ещё не окончательный —
+     * клиент может повторить попытку.
+     *
+     * REJECTED — окончательный отказ.
+     */
+    if (
+        bankStatus === "REJECTED"
+    ) {
+
+        updateData.status =
+            "failed";
+
+        updateData.last_error =
+            [
+                errorCode,
+                message,
+                details,
+            ]
+                .filter(Boolean)
+                .map(String)
+                .join(":")
+                .slice(0, 5000) ||
+            "REJECTED";
+    } else if (
+        bankStatus === "AUTH_FAIL"
+    ) {
+
+        updateData.last_error =
+            [
+                errorCode,
+                message,
+                details,
+            ]
+                .filter(Boolean)
+                .map(String)
+                .join(":")
+                .slice(0, 5000) ||
+            "AUTH_FAIL";
+    }
+
+
+    await payment.update(
+        updateData
+    );
+
+
+    const wallet =
+        await Wallet.findByPk(
+            payment.wallet_id
+        );
+
+
+    const customer =
+        wallet
+            ? await User.findByPk(
+                wallet.user_id
+            )
+            : null;
+
+
+    return {
+        payment,
+        wallet,
+        customer,
+        shouldNotifyFailure,
+    };
+}
 
 module.exports = {
     generateToken,
@@ -730,4 +860,5 @@ module.exports = {
     createTbankTopup,
     getTbankPaymentState,
     finalizeTbankTopup,
+    recordTbankNotification,
 };
